@@ -12,6 +12,7 @@ import LenderModal from './modals/LenderModal';
 import CovenantModal from './modals/CovenantModal';
 import TermModal from './modals/TermModal';
 import AllocationModal from './modals/AllocationModal';
+import DocumentModal from './modals/DocumentModal';
 import { mockPortfolio } from './api/mock-data';
 import { portfolioReducer } from './state/portfolio-reducer';
 import { buildCityState } from './city/utils';
@@ -27,7 +28,8 @@ type ModalState =
   | { type: 'lender'; projectId: string; lender?: Lender }
   | { type: 'covenant'; projectId: string; covenant?: Covenant }
   | { type: 'term'; projectId: string; covenantId: string }
-  | { type: 'allocation'; projectId: string; lender: Lender; tranches: Tranche[] };
+  | { type: 'allocation'; projectId: string; lender: Lender; tranches: Tranche[] }
+  | { type: 'document'; projectId: string };
 
 export default function App() {
   const [portfolio, dispatch] = useReducer(portfolioReducer, mockPortfolio);
@@ -80,7 +82,9 @@ export default function App() {
       {syncedTarget?.kind === 'library' && (
         <LibraryPanel
           building={syncedTarget.building}
+          dispatch={dispatch}
           onClose={() => setActiveTarget(null)}
+          onOpenModal={setModal}
         />
       )}
 
@@ -100,6 +104,7 @@ export default function App() {
       {modal?.type === 'covenant' && <CovenantModal projectId={modal.projectId} covenant={modal.covenant} onClose={() => setModal(null)} dispatch={dispatch} />}
       {modal?.type === 'term' && <TermModal projectId={modal.projectId} covenantId={modal.covenantId} onClose={() => setModal(null)} dispatch={dispatch} />}
       {modal?.type === 'allocation' && <AllocationModal projectId={modal.projectId} lender={modal.lender} tranches={modal.tranches} onClose={() => setModal(null)} dispatch={dispatch} />}
+      {modal?.type === 'document' && <DocumentModal projectId={modal.projectId} onClose={() => setModal(null)} dispatch={dispatch} />}
     </div>
   );
 }

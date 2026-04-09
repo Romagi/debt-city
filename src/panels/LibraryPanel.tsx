@@ -1,4 +1,5 @@
 import type { CityBuilding, DocumentDrive } from '../types/portfolio';
+import type { PortfolioAction } from '../state/portfolio-reducer';
 
 const DRIVE_LABELS: Record<DocumentDrive, string> = {
   lender: 'Lender Drive',
@@ -8,12 +9,16 @@ const DRIVE_LABELS: Record<DocumentDrive, string> = {
 
 const DRIVE_ORDER: DocumentDrive[] = ['lender', 'borrower_shared', 'borrower_confidential'];
 
+type ModalOpener = (m: { type: 'document'; projectId: string }) => void;
+
 interface Props {
   building: CityBuilding;
+  dispatch: React.Dispatch<PortfolioAction>;
   onClose: () => void;
+  onOpenModal: ModalOpener;
 }
 
-export default function LibraryPanel({ building, onClose }: Props) {
+export default function LibraryPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project } = building;
   const docs = project.documents;
   const driveCount = new Set(docs.map(d => d.drive)).size;
@@ -22,6 +27,12 @@ export default function LibraryPanel({ building, onClose }: Props) {
     label: DRIVE_LABELS[drive],
     docs: docs.filter(d => d.drive === drive),
   }));
+
+  function handleDelete(docId: string, name: string) {
+    if (confirm(`Delete "${name}"?`)) {
+      dispatch({ type: 'DELETE_DOCUMENT', payload: { projectId: project.id, documentId: docId } });
+    }
+  }
 
   return (
     <div style={S.panel}>
@@ -38,6 +49,13 @@ export default function LibraryPanel({ building, onClose }: Props) {
         <div><div style={S.statLabel}>Drives</div><div style={S.statValue}>{driveCount}</div></div>
       </div>
 
+      <div style={S.sectionHeader}>
+        <span />
+        <button style={S.addBtn} onClick={() => onOpenModal({ type: 'document', projectId: project.id })}>
+          + Add Document
+        </button>
+      </div>
+
       {byDrive.map(({ drive, label, docs: driveDocs }) => (
         <div key={drive}>
           <h3 style={S.sectionTitle}>{label} ({driveDocs.length})</h3>
@@ -49,6 +67,13 @@ export default function LibraryPanel({ building, onClose }: Props) {
                   <span style={S.docIcon}>&#128196;</span>
                   <span style={S.docName}>{doc.name}</span>
                   <span style={S.docDate}>{doc.uploadedAt}</span>
+                  <button
+                    style={S.delBtn}
+                    onClick={() => handleDelete(doc.id, doc.name)}
+                    title="Delete document"
+                  >
+                    &times;
+                  </button>
                 </div>
               </div>
             ))}
@@ -68,6 +93,8 @@ const S: Record<string, React.CSSProperties> = {
   stats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 },
   statLabel: { color: '#888', fontSize: 10, textTransform: 'uppercase', marginBottom: 2 },
   statValue: { fontSize: 16, fontWeight: 700 },
+  sectionHeader: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
+  addBtn: { background: 'none', border: '1px solid rgba(114,166,166,0.4)', borderRadius: 4, color: '#72A6A6', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'monospace' },
   sectionTitle: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: '#888', margin: '16px 0 8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 },
   list: { display: 'flex', flexDirection: 'column', gap: 4 },
   listItem: { padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 },
@@ -75,5 +102,6 @@ const S: Record<string, React.CSSProperties> = {
   docIcon: { fontSize: 14, flexShrink: 0 },
   docName: { fontWeight: 600, flex: 1 },
   docDate: { color: '#666', fontSize: 10 },
+  delBtn: { background: 'none', border: 'none', color: '#666', fontSize: 14, cursor: 'pointer', padding: '0 2px', lineHeight: 1 },
   empty: { color: '#555', fontSize: 11, fontStyle: 'italic', padding: '4px 0' },
 };

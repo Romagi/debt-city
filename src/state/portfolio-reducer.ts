@@ -1,4 +1,4 @@
-import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money } from '../types/portfolio';
+import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money, DocumentDrive } from '../types/portfolio';
 import { TERM_TRANSITION_MAP, STATUS_TO_STATE } from '../types/portfolio';
 
 // ─── Action types ───
@@ -27,7 +27,9 @@ type Action =
   | { type: 'ADD_TERM'; payload: { projectId: string; covenantId: string; name: string; startDate: string; endDate: string } }
   | { type: 'DELETE_TERM'; payload: { projectId: string; covenantId: string; termId: string } }
   | { type: 'TRANSITION_TERM'; payload: { projectId: string; covenantId: string; termId: string; newStatus: TermStatus } }
-  | { type: 'SET_WAIVER'; payload: { projectId: string; covenantId: string; termId: string; granted: boolean } };
+  | { type: 'SET_WAIVER'; payload: { projectId: string; covenantId: string; termId: string; granted: boolean } }
+  | { type: 'ADD_DOCUMENT'; payload: { projectId: string; name: string; drive: DocumentDrive } }
+  | { type: 'DELETE_DOCUMENT'; payload: { projectId: string; documentId: string } };
 
 export type PortfolioAction = Action;
 
@@ -417,6 +419,27 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
                   : c
               )}
             : p
+        ),
+      });
+    }
+
+    // ── Document ──
+    case 'ADD_DOCUMENT': {
+      const { projectId, name, drive } = action.payload;
+      const newDoc = { id: nextId('doc'), name, drive, uploadedAt: new Date().toISOString().split('T')[0] };
+      return recomputePortfolio({
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === projectId ? { ...p, documents: [...p.documents, newDoc] } : p
+        ),
+      });
+    }
+    case 'DELETE_DOCUMENT': {
+      const { projectId, documentId } = action.payload;
+      return recomputePortfolio({
+        ...state,
+        projects: state.projects.map(p =>
+          p.id === projectId ? { ...p, documents: p.documents.filter(d => d.id !== documentId) } : p
         ),
       });
     }
