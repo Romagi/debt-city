@@ -52,6 +52,9 @@ export default function App() {
       <CityCanvas
         cityState={cityState}
         onTargetClick={setActiveTarget}
+        onMoveStructure={(entityId, structureType, toCol, toRow, width, height) =>
+          dispatch({ type: 'MOVE_STRUCTURE', payload: { entityId, structureType: structureType as any, toCol, toRow, width, height } })
+        }
       />
 
       {/* Contextual panel based on what was clicked */}

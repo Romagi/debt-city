@@ -9,7 +9,7 @@ import type {
   Document,
   DocumentDrive,
 } from '../types/portfolio';
-import { STATUS_TO_STATE } from '../types/portfolio';
+import { STATUS_TO_STATE, createEmptyGrid } from '../types/portfolio';
 
 // ─── Borrowers ───
 
@@ -398,4 +398,5 @@ export const mockPortfolio: Portfolio = {
   borrowers,
   termStateCount: computeTermStateCount(projects),
   totalFunding: { amount: totalAmount, currency: 'EUR' },
+  grid: createEmptyGrid(32),
 };

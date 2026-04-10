@@ -118,11 +118,12 @@ interface DragState {
 interface Props {
   cityState: CityState;
   onTargetClick?: (target: ClickTarget) => void;
+  onMoveStructure?: (entityId: string, structureType: string, toCol: number, toRow: number, width: number, height: number) => void;
 }
 
 const DRAG_THRESHOLD = 4;
 
-export default function CityCanvas({ cityState, onTargetClick }: Props) {
+export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   const [, forceRender] = useState(0);
@@ -133,7 +134,6 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   const lastMoveTimeRef = useRef(0);
   const hoveredCellRef = useRef<{ col: number; row: number } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
-  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null); // project ID of selected building
 
   // Fix 3 — Pre-sort districts (memoized, not per-frame)
   const sortedDistricts = useMemo(
@@ -905,8 +905,17 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function handleMouseUp(e: React.MouseEvent) {
     // If we were dragging a building, drop it
+    if (dragStateRef.current && hoveredCellRef.current) {
+      const ds = dragStateRef.current;
+      const hc = hoveredCellRef.current;
+      const toCol = hc.col - Math.floor(ds.gridW / 2);
+      const toRow = hc.row - Math.floor(ds.gridH / 2);
+      onMoveStructure?.(ds.building.project.id, ds.structureKind, toCol, toRow, ds.gridW, ds.gridH);
+      dragStateRef.current = null;
+      needsRedrawRef.current = true;
+      return;
+    }
     if (dragStateRef.current) {
-      // TODO: persist new position to state
       dragStateRef.current = null;
       needsRedrawRef.current = true;
       return;

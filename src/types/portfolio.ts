@@ -267,6 +267,7 @@ export interface Portfolio {
   borrowers: Borrower[];
   termStateCount: TermStateCount;
   totalFunding: Money;
+  grid: GridState;
 }
 
 // ─── City visual mapping ───
@@ -407,6 +408,14 @@ export function placeOnGrid(grid: GridState, col: number, row: number, w: number
         : { ...content, originCol: col, originRow: row };
     }
   }
+  return { ...grid, cells: newCells };
+}
+
+/** Remove all cells matching a given entityId and type */
+export function removeFromGrid(grid: GridState, entityId: string, type: CellType): GridState {
+  const newCells = grid.cells.map(r => r.map(c =>
+    c && c.entityId === entityId && c.type === type ? null : c
+  ));
   return { ...grid, cells: newCells };
 }
 

@@ -1,5 +1,5 @@
-import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money, DocumentDrive } from '../types/portfolio';
-import { TERM_TRANSITION_MAP, STATUS_TO_STATE } from '../types/portfolio';
+import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money, DocumentDrive, CellType } from '../types/portfolio';
+import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace } from '../types/portfolio';
 
 // ─── Action types ───
 
@@ -29,7 +29,8 @@ type Action =
   | { type: 'TRANSITION_TERM'; payload: { projectId: string; covenantId: string; termId: string; newStatus: TermStatus } }
   | { type: 'SET_WAIVER'; payload: { projectId: string; covenantId: string; termId: string; granted: boolean } }
   | { type: 'ADD_DOCUMENT'; payload: { projectId: string; name: string; drive: DocumentDrive } }
-  | { type: 'DELETE_DOCUMENT'; payload: { projectId: string; documentId: string } };
+  | { type: 'DELETE_DOCUMENT'; payload: { projectId: string; documentId: string } }
+  | { type: 'MOVE_STRUCTURE'; payload: { entityId: string; structureType: CellType; toCol: number; toRow: number; width: number; height: number } };
 
 export type PortfolioAction = Action;
 
@@ -442,6 +443,22 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
           p.id === projectId ? { ...p, documents: p.documents.filter(d => d.id !== documentId) } : p
         ),
       });
+    }
+
+    // ── Grid ──
+    case 'MOVE_STRUCTURE': {
+      const { entityId, structureType, toCol, toRow, width, height } = action.payload;
+      // Remove structure from current position
+      let newGrid = removeFromGrid(state.grid, entityId, structureType);
+      // Check if target area is free
+      if (!canPlace(newGrid, toCol, toRow, width, height)) return state;
+      // Place at new position
+      newGrid = placeOnGrid(newGrid, toCol, toRow, width, height, {
+        type: structureType,
+        entityId,
+        projectId: entityId,
+      });
+      return { ...state, grid: newGrid };
     }
 
     default:
