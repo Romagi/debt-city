@@ -398,5 +398,5 @@ export const mockPortfolio: Portfolio = {
   borrowers,
   termStateCount: computeTermStateCount(projects),
   totalFunding: { amount: totalAmount, currency: 'EUR' },
-  grid: createEmptyGrid(32),
+  grid: createEmptyGrid(60),
 };

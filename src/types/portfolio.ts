@@ -323,9 +323,12 @@ export interface CityState {
 
 // ─── Grid system (city builder) ───
 
-export const GRID_SIZE = 32; // 32×32 tiles
+export const GRID_SIZE = 60; // fits up to ~12 districts (4×3)
 export const ISO_TILE_W = 64; // pixel width of one iso tile
 export const ISO_TILE_H = 32; // pixel height of one iso tile
+export const DISTRICT_SIZE = 12; // 12×12 tiles per district
+export const DISTRICT_GAP = 2; // gap between districts (for roads)
+export const DISTRICT_COLS = 4; // districts per row
 
 export type CellType = 'building' | 'townhall' | 'shop' | 'library' | 'tree_sm' | 'tree_lg' | 'road' | 'park' | 'bench' | 'fountain' | 'bush';
 
@@ -338,25 +341,37 @@ export interface CellContent {
   originRow?: number;
 }
 
+export interface DistrictBounds {
+  projectId: string;
+  col: number; // top-left grid col
+  row: number; // top-left grid row
+  size: number; // always DISTRICT_SIZE (20)
+}
+
 export interface GridState {
   cells: (CellContent | null)[][];
   size: number;
+  districts: DistrictBounds[];
 }
 
-/** How many grid cells each structure type occupies [cols, rows] */
+/** How many grid cells each structure type occupies [cols, rows]
+ *  Based on actual sprite footprint (base isometric diamond), NOT height */
 export const STRUCTURE_SIZES: Record<string, [number, number]> = {
+  // All buildings have roughly the same base footprint — height varies, not footprint
   building_xs: [2, 2],
-  building_sm: [2, 3],
-  building_md: [3, 4],
-  building_lg: [3, 5],
-  building_xl: [4, 6],
+  building_sm: [2, 2],
+  building_md: [2, 2],
+  building_lg: [2, 2],
+  building_xl: [2, 2],
+  // Sub-structures
   townhall: [3, 3],
   shop_kiosk: [2, 2],
-  shop_store: [2, 3],
-  shop_mall: [3, 4],
+  shop_store: [2, 2],
+  shop_mall: [3, 3],
   library_sm: [2, 2],
-  library_md: [2, 3],
+  library_md: [2, 2],
   library_lg: [3, 3],
+  // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],
   road: [1, 1],
@@ -384,7 +399,34 @@ export function screenToGrid(sx: number, sy: number): { col: number; row: number
 /** Create an empty grid */
 export function createEmptyGrid(size: number): GridState {
   const cells: (CellContent | null)[][] = Array.from({ length: size }, () => Array(size).fill(null));
-  return { cells, size };
+  return { cells, size, districts: [] };
+}
+
+/** Get the district that a grid cell belongs to */
+export function getDistrictAt(grid: GridState, col: number, row: number): DistrictBounds | null {
+  return grid.districts.find(d =>
+    col >= d.col && col < d.col + d.size && row >= d.row && row < d.row + d.size
+  ) ?? null;
+}
+
+/** Get the district bounds for a specific project */
+export function getDistrictForProject(grid: GridState, projectId: string): DistrictBounds | null {
+  return grid.districts.find(d => d.projectId === projectId) ?? null;
+}
+
+/** Check if a placement fits within a district */
+export function fitsInDistrict(district: DistrictBounds, col: number, row: number, w: number, h: number): boolean {
+  return col >= district.col && row >= district.row && col + w <= district.col + district.size && row + h <= district.row + district.size;
+}
+
+/** Allocate a new district slot on the grid */
+export function allocateDistrict(grid: GridState, projectId: string): DistrictBounds {
+  const index = grid.districts.length;
+  const slotCol = index % DISTRICT_COLS;
+  const slotRow = Math.floor(index / DISTRICT_COLS);
+  const col = slotCol * (DISTRICT_SIZE + DISTRICT_GAP);
+  const row = slotRow * (DISTRICT_SIZE + DISTRICT_GAP);
+  return { projectId, col, row, size: DISTRICT_SIZE };
 }
 
 /** Check if a rectangle of cells is free */

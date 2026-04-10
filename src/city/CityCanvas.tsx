@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { CityState, CityBuilding, CityDistrict, ClickTarget } from '../types/portfolio';
-import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid } from '../types/portfolio';
+import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid, getDistrictAt, getDistrictForProject, fitsInDistrict } from '../types/portfolio';
+import type { DistrictBounds } from '../types/portfolio';
 import { formatMoney } from './utils';
 
 // ─── Color palettes ───
@@ -204,62 +205,75 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     const th = ISO_TILE_H;
     const drag = dragStateRef.current;
 
-    for (let row = 0; row < grid.size; row++) {
-      for (let col = 0; col < grid.size; col++) {
-        const { x, y } = gridToScreen(col, row);
-        const cell = grid.cells[row]?.[col];
-        const isHovered = hCell && hCell.col === col && hCell.row === row;
-        const isOccupied = cell !== null;
+    // Only render cells inside districts (skip the vast empty grid)
+    for (const d of grid.districts) {
+      // Draw district boundary — thicker outline
+      for (let edge = 0; edge < d.size; edge++) {
+        // Top edge
+        drawTileDiamond(ctx, d.col + edge, d.row, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
+        // Bottom edge
+        drawTileDiamond(ctx, d.col + edge, d.row + d.size - 1, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
+        // Left edge
+        drawTileDiamond(ctx, d.col, d.row + edge, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
+        // Right edge
+        drawTileDiamond(ctx, d.col + d.size - 1, d.row + edge, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
+      }
 
-        // Check if this cell is part of a drag ghost preview
-        let isDragGhost = false;
-        let isDragValid = false;
-        if (drag && hCell) {
-          const gc = hCell.col - Math.floor(drag.gridW / 2);
-          const gr = hCell.row - Math.floor(drag.gridH / 2);
-          if (col >= gc && col < gc + drag.gridW && row >= gr && row < gr + drag.gridH) {
-            isDragGhost = true;
-            // Check if placement would be valid (ignore cells occupied by the dragged building itself)
-            isDragValid = true;
-            for (let dc = gc; dc < gc + drag.gridW && isDragValid; dc++) {
-              for (let dr = gr; dr < gr + drag.gridH && isDragValid; dr++) {
-                if (dc < 0 || dr < 0 || dc >= grid.size || dr >= grid.size) { isDragValid = false; break; }
-                const c = grid.cells[dr]?.[dc];
-                if (c && c.entityId !== drag.building.project.id) isDragValid = false;
+      // Draw interior tiles
+      for (let row = d.row; row < d.row + d.size; row++) {
+        for (let col = d.col; col < d.col + d.size; col++) {
+          const cell = grid.cells[row]?.[col];
+          const isHovered = hCell && hCell.col === col && hCell.row === row;
+          const isOccupied = cell !== null;
+
+          // Drag ghost check
+          let isDragGhost = false;
+          let isDragValid = false;
+          if (drag && hCell) {
+            const gc = hCell.col - Math.floor(drag.gridW / 2);
+            const gr = hCell.row - Math.floor(drag.gridH / 2);
+            if (col >= gc && col < gc + drag.gridW && row >= gr && row < gr + drag.gridH) {
+              isDragGhost = true;
+              // Valid = inside same district + no collision with other structures
+              const dragDistrict = getDistrictForProject(grid, drag.building.project.id);
+              isDragValid = !!dragDistrict && fitsInDistrict(dragDistrict, gc, gr, drag.gridW, drag.gridH);
+              if (isDragValid) {
+                for (let dc = gc; dc < gc + drag.gridW && isDragValid; dc++) {
+                  for (let dr = gr; dr < gr + drag.gridH && isDragValid; dr++) {
+                    const c = grid.cells[dr]?.[dc];
+                    if (c && c.entityId === drag.building.project.id && c.type === drag.structureKind) continue; // Own cells are OK
+                    if (c) isDragValid = false;
+                  }
+                }
               }
             }
           }
-        }
 
-        // Draw tile diamond
-        ctx.beginPath();
-        ctx.moveTo(x, y - th / 2);
-        ctx.lineTo(x + tw / 2, y);
-        ctx.lineTo(x, y + th / 2);
-        ctx.lineTo(x - tw / 2, y);
-        ctx.closePath();
-
-        if (isDragGhost) {
-          ctx.fillStyle = isDragValid ? 'rgba(100, 200, 100, 0.3)' : 'rgba(255, 80, 80, 0.3)';
-          ctx.fill();
-          ctx.strokeStyle = isDragValid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        } else if (isHovered && !drag) {
-          ctx.fillStyle = 'rgba(100, 200, 100, 0.2)';
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(100, 200, 100, 0.4)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        } else if (isOccupied) {
-          ctx.fillStyle = 'rgba(80, 100, 80, 0.06)';
-          ctx.fill();
-        } else {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
-          ctx.lineWidth = 0.5;
-          ctx.stroke();
+          if (isDragGhost) {
+            drawTileDiamond(ctx, col, row,
+              isDragValid ? 'rgba(100, 200, 100, 0.3)' : 'rgba(255, 80, 80, 0.3)',
+              isDragValid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)', 1);
+          } else if (isHovered && !drag) {
+            drawTileDiamond(ctx, col, row, 'rgba(100, 200, 100, 0.2)', 'rgba(100, 200, 100, 0.4)', 1);
+          } else if (isOccupied) {
+            drawTileDiamond(ctx, col, row, 'rgba(80, 100, 80, 0.06)', null, 0);
+          } else {
+            drawTileDiamond(ctx, col, row, null, 'rgba(255, 255, 255, 0.03)', 0.5);
+          }
         }
       }
+    }
+
+    function drawTileDiamond(c: CanvasRenderingContext2D, col: number, row: number, fill: string | null, stroke: string | null, lineW: number) {
+      const { x, y } = gridToScreen(col, row);
+      c.beginPath();
+      c.moveTo(x, y - th / 2);
+      c.lineTo(x + tw / 2, y);
+      c.lineTo(x, y + th / 2);
+      c.lineTo(x - tw / 2, y);
+      c.closePath();
+      if (fill) { c.fillStyle = fill; c.fill(); }
+      if (stroke) { c.strokeStyle = stroke; c.lineWidth = lineW; c.stroke(); }
     }
   }
 
@@ -834,27 +848,28 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
   // ─── Event handlers ───
 
   function handleMouseDown(e: React.MouseEvent) {
-    // Check if clicking on a building → start building drag
     const target = findTargetAt(e.clientX, e.clientY);
-    if (target && e.shiftKey) {
-      // Shift+click = start building drag mode
+    if (target) {
+      // Click on a building — prepare for potential drag
       const sizeKey = target.kind === 'building'
         ? getBuildingSpriteKey(target.building.height)
         : target.kind === 'townhall' ? 'townhall'
-        : target.kind === 'shop' ? (target.building.syndicateSize === 'mall' ? 'shop_mall' : target.building.syndicateSize === 'shop' ? 'shop_md' : 'shop_sm')
+        : target.kind === 'shop' ? (target.building.syndicateSize === 'mall' ? 'shop_mall' : target.building.syndicateSize === 'shop' ? 'shop_store' : 'shop_kiosk')
         : (target.building.librarySize === 'large' ? 'library_lg' : target.building.librarySize === 'medium' ? 'library_md' : 'library_sm');
       const size = STRUCTURE_SIZES[sizeKey] ?? [2, 2];
+      // Store as a potential drag — only activates if mouse moves (DRAG_THRESHOLD)
+      dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, camX: cameraRef.current.x, camY: cameraRef.current.y, moved: false };
       dragStateRef.current = {
         building: target.building,
         structureKind: target.kind as DragState['structureKind'],
         gridCol: 0, gridRow: 0,
         gridW: size[0], gridH: size[1],
       };
-      needsRedrawRef.current = true;
       return;
     }
-    // Otherwise, start camera pan
+    // Click on empty space → camera pan
     dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, camX: cameraRef.current.x, camY: cameraRef.current.y, moved: false };
+    dragStateRef.current = null;
   }
 
   function handleMouseMove(e: React.MouseEvent) {
@@ -868,7 +883,22 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
       if (!drag.moved && Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) drag.moved = true;
-      if (drag.moved) {
+      if (drag.moved && dragStateRef.current) {
+        // Building drag mode — track grid cell, don't pan camera
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const cam = cameraRef.current;
+          const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+          const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+          const cell = screenToGrid(wx, wy);
+          if (cell.col >= 0 && cell.col < GRID_SIZE && cell.row >= 0 && cell.row < GRID_SIZE) {
+            hoveredCellRef.current = cell;
+          }
+        }
+        needsRedrawRef.current = true;
+      } else if (drag.moved) {
+        // Camera pan mode
         cameraRef.current = { ...cameraRef.current, x: drag.camX + dx, y: drag.camY + dy };
         needsRedrawRef.current = true;
       }
@@ -904,29 +934,33 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
   }
 
   function handleMouseUp(e: React.MouseEvent) {
-    // If we were dragging a building, drop it
-    if (dragStateRef.current && hoveredCellRef.current) {
-      const ds = dragStateRef.current;
+    const drag = dragRef.current;
+    const ds = dragStateRef.current;
+
+    if (ds && drag.active && drag.moved && hoveredCellRef.current) {
+      // Building was dragged — drop it
       const hc = hoveredCellRef.current;
       const toCol = hc.col - Math.floor(ds.gridW / 2);
       const toRow = hc.row - Math.floor(ds.gridH / 2);
-      onMoveStructure?.(ds.building.project.id, ds.structureKind, toCol, toRow, ds.gridW, ds.gridH);
+      const district = getDistrictForProject(cityState.grid, ds.building.project.id);
+      if (district && fitsInDistrict(district, toCol, toRow, ds.gridW, ds.gridH)) {
+        onMoveStructure?.(ds.building.project.id, ds.structureKind, toCol, toRow, ds.gridW, ds.gridH);
+      }
       dragStateRef.current = null;
-      needsRedrawRef.current = true;
-      return;
-    }
-    if (dragStateRef.current) {
-      dragStateRef.current = null;
+      dragRef.current = { ...drag, active: false };
       needsRedrawRef.current = true;
       return;
     }
 
-    const drag = dragRef.current;
     if (drag.active && !drag.moved) {
+      // Short click — open panel
       const target = findTargetAt(e.clientX, e.clientY);
       if (target) onTargetClick?.(target);
     }
+
+    dragStateRef.current = null;
     dragRef.current = { ...drag, active: false };
+    needsRedrawRef.current = true;
   }
 
   function handleWheel(e: React.WheelEvent) {

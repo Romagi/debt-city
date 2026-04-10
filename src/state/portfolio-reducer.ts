@@ -1,5 +1,5 @@
 import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money, DocumentDrive, CellType } from '../types/portfolio';
-import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace } from '../types/portfolio';
+import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace, getDistrictForProject, fitsInDistrict } from '../types/portfolio';
 
 // ─── Action types ───
 
@@ -448,6 +448,9 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
     // ── Grid ──
     case 'MOVE_STRUCTURE': {
       const { entityId, structureType, toCol, toRow, width, height } = action.payload;
+      // Validate: must stay within project's district
+      const district = getDistrictForProject(state.grid, entityId);
+      if (!district || !fitsInDistrict(district, toCol, toRow, width, height)) return state;
       // Remove structure from current position
       let newGrid = removeFromGrid(state.grid, entityId, structureType);
       // Check if target area is free

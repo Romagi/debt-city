@@ -12,14 +12,18 @@ import type {
   SyndicateSize,
   LibrarySize,
   GridState,
+  DistrictBounds,
 } from '../types/portfolio';
 import {
   GRID_SIZE,
+  DISTRICT_SIZE,
   STRUCTURE_SIZES,
   gridToScreen,
   createEmptyGrid,
-  findFreeSpot,
   placeOnGrid,
+  canPlace,
+  allocateDistrict,
+  getDistrictForProject,
 } from '../types/portfolio';
 
 // ─── Isometric grid helpers ───
@@ -128,15 +132,7 @@ function getLibrarySizeKey(docCount: number): string {
   return 'library_sm';
 }
 
-/** District size on the grid based on funding */
-function districtGridSize(amount: number): number {
-  if (amount > 500_000_000) return 12;
-  if (amount > 300_000_000) return 10;
-  if (amount > 150_000_000) return 9;
-  return 8;
-}
-
-function findStructureOnGrid(grid: import('../types/portfolio').GridState, entityId: string, type: string): { col: number; row: number } | null {
+function findStructureOnGrid(grid: GridState, entityId: string, type: string): { col: number; row: number } | null {
   for (let r = 0; r < grid.size; r++) {
     for (let c = 0; c < grid.size; c++) {
       const cell = grid.cells[r]?.[c];
@@ -150,19 +146,7 @@ function findStructureOnGrid(grid: import('../types/portfolio').GridState, entit
 
 export function buildCityState(portfolio: Portfolio): CityState {
   const districts: CityDistrict[] = [];
-  // Use persisted grid, or create a fresh one
   let grid = portfolio.grid ?? createEmptyGrid(GRID_SIZE);
-
-  // Track which projects are already on the grid
-  const placedProjectIds = new Set<string>();
-  for (let r = 0; r < grid.size; r++) {
-    for (let c = 0; c < grid.size; c++) {
-      const cell = grid.cells[r]?.[c];
-      if (cell?.type === 'building' && cell.entityId && !cell.originCol && !cell.originRow) {
-        placedProjectIds.add(cell.entityId);
-      }
-    }
-  }
 
   const sortedProjects = [...portfolio.projects].sort((a, b) => {
     const statusOrder: Record<string, number> = { published: 0, draft: 1, archived: 2, finished: 3 };
@@ -177,61 +161,64 @@ export function buildCityState(portfolio: Portfolio): CityState {
     const scale = computeDistrictScale(amount);
     const borrower = portfolio.borrowers.find(b => b.id === project.borrowerId)!;
 
-    // Only auto-place if not already on the grid (persisted positions are preserved)
-    const alreadyPlaced = placedProjectIds.has(project.id);
+    // Get or allocate district for this project
+    let district = getDistrictForProject(grid, project.id);
+    if (!district) {
+      district = allocateDistrict(grid, project.id);
+      grid = { ...grid, districts: [...grid.districts, district] };
+    }
+    const d = district;
 
-    let bCol: number, bRow: number;
+    // Check if building already placed on grid
+    const existingBuildingPos = findStructureOnGrid(grid, project.id, 'building');
     const bSizeKey = getBuildingSizeKey(amount);
     const [bw, bh] = STRUCTURE_SIZES[bSizeKey] ?? [2, 2];
+    let bCol: number, bRow: number;
 
-    if (alreadyPlaced) {
-      // Find existing position on grid
-      let found = false;
-      bCol = 0; bRow = 0;
-      for (let r = 0; r < grid.size && !found; r++) {
-        for (let c = 0; c < grid.size && !found; c++) {
-          const cell = grid.cells[r]?.[c];
-          if (cell?.type === 'building' && cell.entityId === project.id && !cell.originCol && !cell.originRow) {
-            bCol = c; bRow = r; found = true;
-          }
-        }
-      }
+    // Use existing position or auto-place
+    if (existingBuildingPos) {
+      bCol = existingBuildingPos.col;
+      bRow = existingBuildingPos.row;
     } else {
-      // Auto-place new deal
-      const dSize = districtGridSize(amount);
-      const spot = findFreeSpot(grid, dSize, dSize);
-      if (!spot) continue;
-
-      bCol = spot.col + Math.floor((dSize - bw) / 2);
-      bRow = spot.row + Math.floor((dSize - bh) / 2);
-      grid = placeOnGrid(grid, bCol, bRow, bw, bh, { type: 'building', entityId: project.id, projectId: project.id });
-
-      // Place sub-structures
-      const thSize = STRUCTURE_SIZES.townhall ?? [3, 3];
-      const thCol = spot.col + 1;
-      const thRow = bRow + bh;
-      if (canPlaceSafe(grid, thCol, thRow, thSize[0], thSize[1])) {
-        grid = placeOnGrid(grid, thCol, thRow, thSize[0], thSize[1], { type: 'townhall', entityId: project.id, projectId: project.id });
-      }
-
-      const sSizeKey = getShopSizeKey(project.lenders.length);
-      const sSize = STRUCTURE_SIZES[sSizeKey] ?? [2, 2];
-      const sCol = bCol + bw + 1;
-      const sRow = bRow + 1;
-      if (canPlaceSafe(grid, sCol, sRow, sSize[0], sSize[1])) {
-        grid = placeOnGrid(grid, sCol, sRow, sSize[0], sSize[1], { type: 'shop', entityId: project.id, projectId: project.id });
-      }
-
-      const lSizeKey = getLibrarySizeKey(project.documents.length);
-      const lSize = STRUCTURE_SIZES[lSizeKey] ?? [2, 2];
-      const lCol = spot.col + 1;
-      const lRow = bRow - lSize[1] - 1;
-      if (canPlaceSafe(grid, lCol, lRow, lSize[0], lSize[1])) {
-        grid = placeOnGrid(grid, lCol, lRow, lSize[0], lSize[1], { type: 'library', entityId: project.id, projectId: project.id });
+      // Auto-place building centered in district
+      bCol = d.col + Math.floor((DISTRICT_SIZE - bw) / 2);
+      bRow = d.row + Math.floor((DISTRICT_SIZE - bh) / 2);
+      if (canPlace(grid, bCol, bRow, bw, bh)) {
+        grid = placeOnGrid(grid, bCol, bRow, bw, bh, { type: 'building', entityId: project.id, projectId: project.id });
       }
     }
 
-    // Find screen positions for all structures by scanning the grid
+    // Auto-place sub-structures ONLY if not already on the grid
+    if (!findStructureOnGrid(grid, project.id, 'townhall')) {
+      const [thW, thH] = STRUCTURE_SIZES.townhall ?? [3, 3];
+      const thCol = d.col + 1;
+      const thRow = bRow + bh + 1;
+      if (canPlace(grid, thCol, thRow, thW, thH)) {
+        grid = placeOnGrid(grid, thCol, thRow, thW, thH, { type: 'townhall', entityId: project.id, projectId: project.id });
+      }
+    }
+
+    if (!findStructureOnGrid(grid, project.id, 'shop')) {
+      const sSizeKey = getShopSizeKey(project.lenders.length);
+      const [sW, sH] = STRUCTURE_SIZES[sSizeKey] ?? [2, 2];
+      const sCol = bCol + bw + 1;
+      const sRow = bRow + 1;
+      if (canPlace(grid, sCol, sRow, sW, sH)) {
+        grid = placeOnGrid(grid, sCol, sRow, sW, sH, { type: 'shop', entityId: project.id, projectId: project.id });
+      }
+    }
+
+    if (!findStructureOnGrid(grid, project.id, 'library')) {
+      const lSizeKey = getLibrarySizeKey(project.documents.length);
+      const [lW, lH] = STRUCTURE_SIZES[lSizeKey] ?? [2, 2];
+      const lCol = d.col + 1;
+      const lRow = d.row + 1;
+      if (canPlace(grid, lCol, lRow, lW, lH)) {
+        grid = placeOnGrid(grid, lCol, lRow, lW, lH, { type: 'library', entityId: project.id, projectId: project.id });
+      }
+    }
+
+    // Convert grid positions to screen positions
     const { x, y } = gridToScreen(bCol + bw / 2, bRow + bh / 2);
     const thPos = findStructureOnGrid(grid, project.id, 'townhall');
     const sPos = findStructureOnGrid(grid, project.id, 'shop');
@@ -242,8 +229,7 @@ export function buildCityState(portfolio: Portfolio): CityState {
 
     const mainBuilding: CityBuilding = {
       project,
-      x,
-      y,
+      x, y,
       width: TILE_WIDTH,
       height,
       floors: project.tranches.length,
@@ -260,8 +246,7 @@ export function buildCityState(portfolio: Portfolio): CityState {
     districts.push({
       borrower,
       buildings: [mainBuilding],
-      x,
-      y,
+      x, y,
       scale,
       esgScore: mapEsgScore(borrower),
     });
@@ -273,16 +258,6 @@ export function buildCityState(portfolio: Portfolio): CityState {
     totalBuildings: portfolio.projects.length,
     grid,
   };
-
-  function canPlaceSafe(g: GridState, col: number, row: number, w: number, h: number): boolean {
-    if (col < 0 || row < 0 || col + w > g.size || row + h > g.size) return false;
-    for (let c = col; c < col + w; c++) {
-      for (let r = row; r < row + h; r++) {
-        if (g.cells[r]?.[c] !== null && g.cells[r]?.[c] !== undefined) return false;
-      }
-    }
-    return true;
-  }
 }
 
 // ─── Formatting helpers ───
