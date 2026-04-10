@@ -11,6 +11,15 @@ import type {
   WeatherState,
   SyndicateSize,
   LibrarySize,
+  GridState,
+} from '../types/portfolio';
+import {
+  GRID_SIZE,
+  STRUCTURE_SIZES,
+  gridToScreen,
+  createEmptyGrid,
+  findFreeSpot,
+  placeOnGrid,
 } from '../types/portfolio';
 
 // ─── Isometric grid helpers ───
@@ -118,8 +127,38 @@ const GRID_COLS = 3;
 const GRID_SPACING_COL = 11;
 const GRID_SPACING_ROW = 11;
 
+/** Get the building size key based on funding */
+function getBuildingSizeKey(amount: number): string {
+  if (amount > 500_000_000) return 'building_xl';
+  if (amount > 300_000_000) return 'building_lg';
+  if (amount > 150_000_000) return 'building_md';
+  if (amount > 50_000_000) return 'building_sm';
+  return 'building_xs';
+}
+
+function getShopSizeKey(lenderCount: number): string {
+  if (lenderCount >= 5) return 'shop_mall';
+  if (lenderCount >= 3) return 'shop_store';
+  return 'shop_kiosk';
+}
+
+function getLibrarySizeKey(docCount: number): string {
+  if (docCount >= 9) return 'library_lg';
+  if (docCount >= 4) return 'library_md';
+  return 'library_sm';
+}
+
+/** District size on the grid based on funding */
+function districtGridSize(amount: number): number {
+  if (amount > 500_000_000) return 12;
+  if (amount > 300_000_000) return 10;
+  if (amount > 150_000_000) return 9;
+  return 8;
+}
+
 export function buildCityState(portfolio: Portfolio): CityState {
   const districts: CityDistrict[] = [];
+  let grid = createEmptyGrid(GRID_SIZE);
 
   const sortedProjects = [...portfolio.projects].sort((a, b) => {
     const statusOrder: Record<string, number> = { published: 0, draft: 1, archived: 2, finished: 3 };
@@ -128,15 +167,62 @@ export function buildCityState(portfolio: Portfolio): CityState {
     return b.globalFundingAmount.amount - a.globalFundingAmount.amount;
   });
 
-  sortedProjects.forEach((project, index) => {
-    const gridCol = index % GRID_COLS;
-    const gridRow = Math.floor(index / GRID_COLS);
-    const { x, y } = gridToIso(gridCol * GRID_SPACING_COL, gridRow * GRID_SPACING_ROW);
-
+  for (const project of sortedProjects) {
     const amount = project.globalFundingAmount.amount;
     const height = computeBuildingHeight(amount);
     const scale = computeDistrictScale(amount);
     const borrower = portfolio.borrowers.find(b => b.id === project.borrowerId)!;
+
+    // Find a spot for this district on the grid
+    const dSize = districtGridSize(amount);
+    const spot = findFreeSpot(grid, dSize, dSize);
+    if (!spot) continue; // Grid full — skip this deal
+
+    // Reserve the district area
+    for (let c = spot.col; c < spot.col + dSize; c++) {
+      for (let r = spot.row; r < spot.row + dSize; r++) {
+        if (!grid.cells[r]?.[c]) {
+          // Mark as part of district (we'll overwrite with structures below)
+        }
+      }
+    }
+
+    // Place building in center of district
+    const bSizeKey = getBuildingSizeKey(amount);
+    const [bw, bh] = STRUCTURE_SIZES[bSizeKey] ?? [2, 2];
+    const bCol = spot.col + Math.floor((dSize - bw) / 2);
+    const bRow = spot.row + Math.floor((dSize - bh) / 2);
+    grid = placeOnGrid(grid, bCol, bRow, bw, bh, { type: 'building', entityId: project.id, projectId: project.id });
+
+    // Place sub-structures around the building
+    const thSize = STRUCTURE_SIZES.townhall ?? [3, 3];
+    const thCol = spot.col + 1;
+    const thRow = bRow + bh;
+    if (canPlaceSafe(grid, thCol, thRow, thSize[0], thSize[1])) {
+      grid = placeOnGrid(grid, thCol, thRow, thSize[0], thSize[1], { type: 'townhall', entityId: project.id, projectId: project.id });
+    }
+
+    const sSizeKey = getShopSizeKey(project.lenders.length);
+    const sSize = STRUCTURE_SIZES[sSizeKey] ?? [2, 2];
+    const sCol = bCol + bw + 1;
+    const sRow = bRow + 1;
+    if (canPlaceSafe(grid, sCol, sRow, sSize[0], sSize[1])) {
+      grid = placeOnGrid(grid, sCol, sRow, sSize[0], sSize[1], { type: 'shop', entityId: project.id, projectId: project.id });
+    }
+
+    const lSizeKey = getLibrarySizeKey(project.documents.length);
+    const lSize = STRUCTURE_SIZES[lSizeKey] ?? [2, 2];
+    const lCol = spot.col + 1;
+    const lRow = bRow - lSize[1] - 1;
+    if (canPlaceSafe(grid, lCol, lRow, lSize[0], lSize[1])) {
+      grid = placeOnGrid(grid, lCol, lRow, lSize[0], lSize[1], { type: 'library', entityId: project.id, projectId: project.id });
+    }
+
+    // Convert grid position to screen position for backward compatibility
+    const { x, y } = gridToScreen(bCol + bw / 2, bRow + bh / 2);
+    const thScreen = gridToScreen(thCol + thSize[0] / 2, thRow + thSize[1] / 2);
+    const sScreen = gridToScreen(sCol + sSize[0] / 2, sRow + sSize[1] / 2);
+    const lScreen = gridToScreen(lCol + lSize[0] / 2, lRow + lSize[1] / 2);
 
     const mainBuilding: CityBuilding = {
       project,
@@ -150,9 +236,9 @@ export function buildCityState(portfolio: Portfolio): CityState {
       trafficLight: mapTrafficLight(project),
       syndicateSize: mapSyndicateSize(project.lenders.length),
       librarySize: mapLibrarySize(project.documents.length),
-      townhallPos: townhallPosition(x, y, TILE_WIDTH, scale),
-      shopPos: shopPosition(x, y, TILE_WIDTH, scale),
-      libraryPos: libraryPosition(x, y, TILE_WIDTH, scale),
+      townhallPos: thScreen,
+      shopPos: sScreen,
+      libraryPos: lScreen,
     };
 
     districts.push({
@@ -163,13 +249,24 @@ export function buildCityState(portfolio: Portfolio): CityState {
       scale,
       esgScore: mapEsgScore(borrower),
     });
-  });
+  }
 
   return {
     districts,
     weather: mapWeather(portfolio),
     totalBuildings: portfolio.projects.length,
+    grid,
   };
+
+  function canPlaceSafe(g: GridState, col: number, row: number, w: number, h: number): boolean {
+    if (col < 0 || row < 0 || col + w > g.size || row + h > g.size) return false;
+    for (let c = col; c < col + w; c++) {
+      for (let r = row; r < row + h; r++) {
+        if (g.cells[r]?.[c] !== null && g.cells[r]?.[c] !== undefined) return false;
+      }
+    }
+    return true;
+  }
 }
 
 // ─── Formatting helpers ───

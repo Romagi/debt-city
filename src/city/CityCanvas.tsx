@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { CityState, CityBuilding, CityDistrict, ClickTarget } from '../types/portfolio';
+import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, gridToScreen, screenToGrid } from '../types/portfolio';
 import { formatMoney } from './utils';
 
 // ─── Color palettes ───
@@ -121,6 +122,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   const needsRedrawRef = useRef(true);
   const canvasSizeRef = useRef({ w: 0, h: 0 });
   const lastMoveTimeRef = useRef(0);
+  const hoveredCellRef = useRef<{ col: number; row: number } | null>(null);
 
   // Fix 3 — Pre-sort districts (memoized, not per-frame)
   const sortedDistricts = useMemo(
@@ -172,6 +174,9 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.translate(width / 2 + cam.x, height * 0.35 + cam.y);
     ctx.scale(cam.zoom, cam.zoom);
 
+    // Draw grid
+    drawGrid(ctx, cityState.grid);
+
     for (const district of sortedDistricts) drawDistrict(ctx, district);
 
     // Tooltip — read from ref
@@ -181,6 +186,46 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.restore();
     drawHUD(ctx, width);
   }, [cityState, sortedDistricts]);
+
+  function drawGrid(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
+    const hCell = hoveredCellRef.current;
+    const tw = ISO_TILE_W;
+    const th = ISO_TILE_H;
+
+    for (let row = 0; row < grid.size; row++) {
+      for (let col = 0; col < grid.size; col++) {
+        const { x, y } = gridToScreen(col, row);
+        const cell = grid.cells[row]?.[col];
+        const isHovered = hCell && hCell.col === col && hCell.row === row;
+        const isOccupied = cell !== null;
+
+        // Draw tile diamond
+        ctx.beginPath();
+        ctx.moveTo(x, y - th / 2);
+        ctx.lineTo(x + tw / 2, y);
+        ctx.lineTo(x, y + th / 2);
+        ctx.lineTo(x - tw / 2, y);
+        ctx.closePath();
+
+        if (isHovered) {
+          ctx.fillStyle = 'rgba(100, 200, 100, 0.25)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(100, 200, 100, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        } else if (isOccupied) {
+          // Occupied cells are subtle — buildings render on top
+          ctx.fillStyle = 'rgba(80, 100, 80, 0.06)';
+          ctx.fill();
+        } else {
+          // Empty cell — very subtle grid line
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+  }
 
   function drawDistrictGround(ctx: CanvasRenderingContext2D, district: CityDistrict) {
     const b = district.buildings[0];
@@ -780,6 +825,24 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
         hoveredTargetRef.current = target;
         needsRedrawRef.current = true;
         forceRender(n => n + 1); // Update cursor style
+      }
+      // Track hovered grid cell
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const cam = cameraRef.current;
+        const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+        const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+        const cell = screenToGrid(wx, wy);
+        const prevCell = hoveredCellRef.current;
+        if (!prevCell || prevCell.col !== cell.col || prevCell.row !== cell.row) {
+          if (cell.col >= 0 && cell.col < GRID_SIZE && cell.row >= 0 && cell.row < GRID_SIZE) {
+            hoveredCellRef.current = cell;
+          } else {
+            hoveredCellRef.current = null;
+          }
+          needsRedrawRef.current = true;
+        }
       }
     }
   }

@@ -317,4 +317,112 @@ export interface CityState {
   districts: CityDistrict[];
   weather: WeatherState;
   totalBuildings: number;
+  grid: GridState;
+}
+
+// ─── Grid system (city builder) ───
+
+export const GRID_SIZE = 32; // 32×32 tiles
+export const ISO_TILE_W = 64; // pixel width of one iso tile
+export const ISO_TILE_H = 32; // pixel height of one iso tile
+
+export type CellType = 'building' | 'townhall' | 'shop' | 'library' | 'tree_sm' | 'tree_lg' | 'road' | 'park' | 'bench' | 'fountain' | 'bush';
+
+export interface CellContent {
+  type: CellType;
+  entityId?: string;    // Links to project/covenant/lender ID
+  projectId?: string;   // Which deal this belongs to
+  /** For multi-cell structures, only the top-left cell has the content. Other cells point to it. */
+  originCol?: number;
+  originRow?: number;
+}
+
+export interface GridState {
+  cells: (CellContent | null)[][];
+  size: number;
+}
+
+/** How many grid cells each structure type occupies [cols, rows] */
+export const STRUCTURE_SIZES: Record<string, [number, number]> = {
+  building_xs: [2, 2],
+  building_sm: [2, 3],
+  building_md: [3, 4],
+  building_lg: [3, 5],
+  building_xl: [4, 6],
+  townhall: [3, 3],
+  shop_kiosk: [2, 2],
+  shop_store: [2, 3],
+  shop_mall: [3, 4],
+  library_sm: [2, 2],
+  library_md: [2, 3],
+  library_lg: [3, 3],
+  tree_sm: [1, 1],
+  tree_lg: [1, 1],
+  road: [1, 1],
+  park: [2, 2],
+  bench: [1, 1],
+  fountain: [1, 1],
+  bush: [1, 1],
+};
+
+/** Convert grid coords to isometric screen coords */
+export function gridToScreen(col: number, row: number): { x: number; y: number } {
+  return {
+    x: (col - row) * (ISO_TILE_W / 2),
+    y: (col + row) * (ISO_TILE_H / 2),
+  };
+}
+
+/** Convert isometric screen coords to grid coords */
+export function screenToGrid(sx: number, sy: number): { col: number; row: number } {
+  const col = (sx / (ISO_TILE_W / 2) + sy / (ISO_TILE_H / 2)) / 2;
+  const row = (sy / (ISO_TILE_H / 2) - sx / (ISO_TILE_W / 2)) / 2;
+  return { col: Math.floor(col), row: Math.floor(row) };
+}
+
+/** Create an empty grid */
+export function createEmptyGrid(size: number): GridState {
+  const cells: (CellContent | null)[][] = Array.from({ length: size }, () => Array(size).fill(null));
+  return { cells, size };
+}
+
+/** Check if a rectangle of cells is free */
+export function canPlace(grid: GridState, col: number, row: number, w: number, h: number): boolean {
+  if (col < 0 || row < 0 || col + w > grid.size || row + h > grid.size) return false;
+  for (let c = col; c < col + w; c++) {
+    for (let r = row; r < row + h; r++) {
+      if (grid.cells[r][c] !== null) return false;
+    }
+  }
+  return true;
+}
+
+/** Place a structure on the grid */
+export function placeOnGrid(grid: GridState, col: number, row: number, w: number, h: number, content: CellContent): GridState {
+  const newCells = grid.cells.map(r => [...r]);
+  for (let c = col; c < col + w; c++) {
+    for (let r = row; r < row + h; r++) {
+      newCells[r][c] = (c === col && r === row)
+        ? content
+        : { ...content, originCol: col, originRow: row };
+    }
+  }
+  return { ...grid, cells: newCells };
+}
+
+/** Find a free spot on the grid for a rectangle of given size */
+export function findFreeSpot(grid: GridState, w: number, h: number): { col: number; row: number } | null {
+  // Spiral from center outward
+  const center = Math.floor(grid.size / 2);
+  for (let radius = 0; radius < grid.size; radius++) {
+    for (let dc = -radius; dc <= radius; dc++) {
+      for (let dr = -radius; dr <= radius; dr++) {
+        if (Math.abs(dc) !== radius && Math.abs(dr) !== radius) continue; // Only check perimeter
+        const col = center + dc;
+        const row = center + dr;
+        if (canPlace(grid, col, row, w, h)) return { col, row };
+      }
+    }
+  }
+  return null;
 }
