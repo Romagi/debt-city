@@ -92,27 +92,28 @@ function mapWeather(portfolio: Portfolio): WeatherState {
 }
 
 // ─── Sub-structure positions relative to building origin ───
+// Layout: library (back-left), building (center), townhall (front-left), shop (front-right)
 
-/** Townhall (mairie) — to the left of the building */
+/** Townhall (mairie) — front-left of the building */
 function townhallPosition(bx: number, by: number, w: number): { x: number; y: number } {
-  return { x: bx - w * 0.78, y: by + w * 0.39 };
+  return { x: bx - w * 0.95, y: by + w * 0.48 };
 }
 
-/** Shop (syndicate) — to the right of the building */
+/** Shop (syndicate) — front-right of the building */
 function shopPosition(bx: number, by: number, w: number): { x: number; y: number } {
-  return { x: bx + w * 0.78, y: by + w * 0.39 };
+  return { x: bx + w * 0.95, y: by + w * 0.48 };
 }
 
-/** Library (bibliothèque) — behind the building (upper-left in iso view) */
+/** Library (bibliothèque) — back-left, clearly visible above building */
 function libraryPosition(bx: number, by: number, w: number): { x: number; y: number } {
-  return { x: bx - w * 0.35, y: by - w * 0.45 };
+  return { x: bx - w * 0.95, y: by - w * 0.48 };
 }
 
 // ─── Build city layout ───
 
 const GRID_COLS = 3;
-const GRID_SPACING_COL = 7;
-const GRID_SPACING_ROW = 7;
+const GRID_SPACING_COL = 9;
+const GRID_SPACING_ROW = 9;
 
 export function buildCityState(portfolio: Portfolio): CityState {
   const districts: CityDistrict[] = [];

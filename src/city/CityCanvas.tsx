@@ -48,6 +48,58 @@ const LIBRARY_SIZES: Record<string, { lw: number; lh: number }> = {
 const EMPTY_LOT_W = 24;
 const EMPTY_LOT_H = 10;
 
+// ─── Sprite system ───
+
+const SPRITE_PATHS = {
+  // Main buildings by size tier (small → large)
+  building_xs: '/sprites/building-xs.png',
+  building_sm: '/sprites/building-sm.png',
+  building_md: '/sprites/building-md.png',
+  building_lg: '/sprites/building-lg.png',
+  building_xl: '/sprites/building-xl.png',
+  // Sub-structures
+  townhall: '/sprites/townhall.png',
+  shop_sm: '/sprites/shop-kiosk.png',
+  shop_md: '/sprites/shop-store.png',
+  shop_lg: '/sprites/shop-mall.png',
+  library_sm: '/sprites/library-sm.png',
+  library_md: '/sprites/library-md.png',
+  library_lg: '/sprites/library-lg.png',
+  // Extras
+  empty_lot: '/sprites/empty-lot.png',
+  crane: '/sprites/crane.png',
+} as const;
+
+type SpriteKey = keyof typeof SPRITE_PATHS;
+
+const spriteCache: Map<string, HTMLImageElement> = new Map();
+let spritesLoaded = false;
+
+function loadAllSprites(): Promise<void> {
+  if (spritesLoaded) return Promise.resolve();
+  const promises = Object.entries(SPRITE_PATHS).map(([key, path]) => {
+    return new Promise<void>((resolve) => {
+      const img = new Image();
+      img.onload = () => { spriteCache.set(key, img); resolve(); };
+      img.onerror = () => resolve(); // Graceful fail
+      img.src = path;
+    });
+  });
+  return Promise.all(promises).then(() => { spritesLoaded = true; });
+}
+
+function getSprite(key: SpriteKey): HTMLImageElement | undefined {
+  return spriteCache.get(key);
+}
+
+function getBuildingSpriteKey(height: number): SpriteKey {
+  if (height > 140) return 'building_xl';
+  if (height > 110) return 'building_lg';
+  if (height > 80) return 'building_md';
+  if (height > 55) return 'building_sm';
+  return 'building_xs';
+}
+
 interface Props {
   cityState: CityState;
   onTargetClick?: (target: ClickTarget) => void;
@@ -61,6 +113,9 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   const [, forceRender] = useState(0);
   const [hoveredTarget, setHoveredTarget] = useState<ClickTarget | null>(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false });
+
+  // Load sprites on mount
+  useEffect(() => { loadAllSprites().then(() => forceRender(n => n + 1)); }, []);
 
   function screenToWorld(screenX: number, screenY: number) {
     const canvas = canvasRef.current;
@@ -92,14 +147,6 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.save();
     ctx.translate(width / 2 + cam.x, height * 0.35 + cam.y);
     ctx.scale(cam.zoom, cam.zoom);
-
-    // Ground shadows
-    ctx.fillStyle = 'rgba(0,0,0,0.06)';
-    for (const d of cityState.districts) {
-      for (const b of d.buildings) {
-        ctx.beginPath(); ctx.ellipse(b.x, b.y + b.width * 0.15, b.width * 0.9, b.width * 0.3, 0, 0, Math.PI * 2); ctx.fill();
-      }
-    }
 
     // Sort by y, draw back-to-front
     const sorted = [...cityState.districts].sort((a, b) => a.y - b.y);
@@ -167,46 +214,34 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.restore();
   }
 
-  // ─── Main building (deal + tranches) — NO traffic light, NO alerts ───
+  // ─── Main building (deal + tranches) — sprite-based ───
 
   function drawBuilding(ctx: CanvasRenderingContext2D, building: CityBuilding) {
-    const { x, y, width: w, height: h, state, floors, project } = building;
+    const { x, y, width: w, height: h, state, project } = building;
     const isHovered = hoveredTarget?.kind === 'building' && hoveredTarget.building.project.id === project.id;
-    const colors = BUILDING_COLORS[project.nature] ?? BUILDING_COLORS.real_estate;
     const bw = w * 0.9;
     const bh = h;
 
     ctx.save();
     ctx.translate(x, y);
 
-    drawIsoBox(ctx, bw, bh,
-      isHovered ? lighten(colors.base, 20) : colors.base,
-      isHovered ? lighten(colors.side, 15) : colors.side,
-      isHovered ? lighten(colors.top, 20) : colors.top,
-    );
-
-    // Floor lines
-    if (floors > 1) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = 1;
-      const floorH = bh / floors;
-      for (let i = 1; i < floors; i++) {
-        const fy = -floorH * i;
-        ctx.beginPath(); ctx.moveTo(0, fy); ctx.lineTo(bw / 2, bw / 4 + fy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, fy); ctx.lineTo(-bw / 2, bw / 4 + fy); ctx.stroke();
-      }
+    // Draw sprite
+    const spriteKey = getBuildingSpriteKey(bh);
+    const sprite = getSprite(spriteKey);
+    if (sprite) {
+      // The sprite is 64x64 with the building roughly centered.
+      // Scale so the sprite height matches bh + some ground margin.
+      const targetH = bh + bw / 4;
+      const scale = targetH / (sprite.height * 0.85);
+      const sw = sprite.width * scale;
+      const sh = sprite.height * scale;
+      ctx.drawImage(sprite, -sw / 2, -bh - sh * 0.15, sw, sh);
+    } else {
+      const colors = BUILDING_COLORS[project.nature] ?? BUILDING_COLORS.real_estate;
+      drawIsoBox(ctx, bw, bh, colors.base, colors.side, colors.top);
     }
 
-    // Windows
-    ctx.fillStyle = 'rgba(255, 255, 200, 0.5)';
-    const floorH = bh / Math.max(floors, 1);
-    for (let f = 0; f < Math.max(floors, 1); f++) {
-      const baseY = -f * floorH;
-      for (let c = 0; c < 3; c++) ctx.fillRect(4 + c * (bw / 7), baseY - floorH * 0.35 + c * (bw / 4 / 7), 3, 4);
-      for (let c = 0; c < 2; c++) ctx.fillRect(-8 - c * (bw / 7), baseY - floorH * 0.35 + c * (bw / 4 / 7), 3, 4);
-    }
-
-    // State overlay
+    // State overlay (dimmed/closed)
     const overlay = STATE_OVERLAY[state];
     if (overlay) {
       ctx.fillStyle = overlay;
@@ -216,22 +251,32 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
       ctx.closePath(); ctx.fill();
     }
 
-    // Crane
+    // Crane for draft projects
     if (state === 'construction') {
       ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(bw / 4, -bh); ctx.lineTo(bw / 4, -bh - 35); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(bw / 4 - 18, -bh - 35); ctx.lineTo(bw / 4 + 25, -bh - 35); ctx.stroke();
+      ctx.strokeStyle = '#CCA300'; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(bw / 4, -bh - 35); ctx.lineTo(bw / 4 + 25, -bh - 30); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bw / 4, -bh - 35); ctx.lineTo(bw / 4 - 18, -bh - 30); ctx.stroke();
       ctx.strokeStyle = '#CCA300'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(bw / 4 + 20, -bh - 35); ctx.lineTo(bw / 4 + 20, -bh - 18); ctx.stroke();
     }
 
-    // Hover outline
-    if (isHovered) drawHoverOutline(ctx, bw, bh);
+    // Hover glow
+    if (isHovered) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 2); ctx.lineTo(bw / 2 + 2, bw / 4 + 2); ctx.lineTo(bw / 2 + 2, bw / 4 - bh - 2);
+      ctx.lineTo(0, -bh - 2); ctx.lineTo(-bw / 2 - 2, bw / 4 - bh - 2); ctx.lineTo(-bw / 2 - 2, bw / 4 + 2);
+      ctx.closePath(); ctx.stroke();
+    }
 
     ctx.restore();
   }
 
-  // ─── Townhall (mairie) — covenants + traffic light + alerts ───
+  // ─── Townhall (mairie) — sprite + traffic light + alerts ───
 
   function drawTownhall(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { townhallPos, alertLevel, trafficLight, project } = building;
@@ -243,26 +288,19 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.save();
     ctx.translate(townhallPos.x, townhallPos.y);
 
-    drawIsoBox(ctx, tw, th,
-      isHovered ? lighten(TOWNHALL_COLORS.base, 20) : TOWNHALL_COLORS.base,
-      isHovered ? lighten(TOWNHALL_COLORS.side, 15) : TOWNHALL_COLORS.side,
-      isHovered ? lighten(TOWNHALL_COLORS.top, 20) : TOWNHALL_COLORS.top,
-    );
+    // Sprite or fallback
+    const sprite = getSprite('townhall');
+    if (sprite) {
+      const targetH = th + tw / 4;
+      const scale = targetH / (sprite.height * 0.7);
+      const sw = sprite.width * scale;
+      const sh = sprite.height * scale;
+      ctx.drawImage(sprite, -sw / 2, -th - sh * 0.2, sw, sh);
+    } else {
+      drawIsoBox(ctx, tw, th, TOWNHALL_COLORS.base, TOWNHALL_COLORS.side, TOWNHALL_COLORS.top);
+    }
 
-    // Roof triangle (pediment) on front face — mairie style
-    ctx.fillStyle = isHovered ? lighten(TOWNHALL_COLORS.top, 25) : TOWNHALL_COLORS.top;
-    ctx.beginPath();
-    ctx.moveTo(tw * 0.05, -th);
-    ctx.lineTo(tw / 4, tw / 8 - th);
-    ctx.lineTo(tw / 4, -th - 8);
-    ctx.closePath();
-    ctx.fill();
-
-    // Door
-    ctx.fillStyle = 'rgba(60, 40, 30, 0.7)';
-    ctx.fillRect(2, -th * 0.55, 5, 7);
-
-    // "Covenant count" label
+    // Covenant count badge
     ctx.fillStyle = '#FFF';
     ctx.font = 'bold 8px monospace';
     ctx.textAlign = 'center';
@@ -272,37 +310,38 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
 
-    // Traffic light on the townhall
+    // Traffic light
     const tlX = tw / 2 + 8;
     const tlY = -th * 0.5;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(tlX - 0.5, tlY + 4, 1, 14);
     ctx.fillStyle = '#2A2A2A';
-    ctx.fillRect(tlX - 1.5, tlY, 3, 18);
+    ctx.fillRect(tlX - 3, tlY - 5, 6, 10);
     ctx.fillStyle = TRAFFIC_LIGHT_COLORS[trafficLight];
     ctx.shadowColor = TRAFFIC_LIGHT_COLORS[trafficLight];
-    ctx.shadowBlur = trafficLight === 'red' ? 10 : 5;
-    ctx.beginPath(); ctx.arc(tlX, tlY, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = trafficLight === 'red' ? 12 : 6;
+    ctx.beginPath(); ctx.arc(tlX, tlY, 3.5, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Smoke / fire — alerts belong to the mairie
+    // Smoke / fire alerts
     if (alertLevel !== 'none') {
       const time = Date.now() / 1000;
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 6; i++) {
         const px = Math.sin(time * 1.5 + i * 1.7) * 6;
-        const py = -th - 12 - i * 6 - Math.sin(time * 2.5 + i * 0.9) * 4;
-        const size = (alertLevel === 'fire' ? 5 : 3.5) - i * 0.5;
+        const py = -th - 14 - i * 5.5 - Math.sin(time * 2.5 + i * 0.9) * 3;
+        const size = (alertLevel === 'fire' ? 5.5 : 3.5) - i * 0.5;
         ctx.fillStyle = alertLevel === 'fire'
-          ? (i < 2 ? `rgba(255, ${60 + i * 30}, 20, ${0.7 - i * 0.1})` : `rgba(80, 80, 80, ${0.3 - i * 0.04})`)
+          ? (i < 2 ? `rgba(255, ${50 + i * 35}, 15, ${0.75 - i * 0.1})` : `rgba(80, 80, 80, ${0.3 - i * 0.04})`)
           : `rgba(160, 160, 160, ${0.35 - i * 0.05})`;
         ctx.beginPath(); ctx.arc(px, py, Math.max(size, 1), 0, Math.PI * 2); ctx.fill();
       }
     }
 
     if (isHovered) drawHoverOutline(ctx, tw, th);
-
     ctx.restore();
   }
 
-  // ─── Shop (syndicate) ───
+  // ─── Shop (syndicate) — sprite-based ───
 
   function drawShop(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { shopPos, syndicateSize, project } = building;
@@ -310,26 +349,25 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     const lenderCount = project.lenders.length;
     const sizeConfig = SHOP_SIZES[syndicateSize];
     if (!sizeConfig) return;
-
     const { sw, sh } = sizeConfig;
 
     ctx.save();
     ctx.translate(shopPos.x, shopPos.y);
 
-    drawIsoBox(ctx, sw, sh,
-      isHovered ? lighten(SHOP_COLORS.base, 20) : SHOP_COLORS.base,
-      isHovered ? lighten(SHOP_COLORS.side, 15) : SHOP_COLORS.side,
-      isHovered ? lighten(SHOP_COLORS.top, 20) : SHOP_COLORS.top,
-    );
-
-    // Windows
-    ctx.fillStyle = 'rgba(255, 220, 150, 0.6)';
-    const windowCount = syndicateSize === 'mall' ? 4 : syndicateSize === 'shop' ? 3 : 1;
-    for (let i = 0; i < windowCount; i++) {
-      ctx.fillRect(2 + i * (sw / 2 / (windowCount + 1)), -sh * 0.5 + i * 1.2, 4, 5);
+    // Sprite by size
+    const spriteKey: SpriteKey = syndicateSize === 'mall' ? 'shop_lg' : syndicateSize === 'shop' ? 'shop_md' : 'shop_sm';
+    const sprite = getSprite(spriteKey);
+    if (sprite) {
+      const targetH = sh + sw / 4;
+      const scale = targetH / (sprite.height * 0.7);
+      const sprW = sprite.width * scale;
+      const sprH = sprite.height * scale;
+      ctx.drawImage(sprite, -sprW / 2, -sh - sprH * 0.2, sprW, sprH);
+    } else {
+      drawIsoBox(ctx, sw, sh, SHOP_COLORS.base, SHOP_COLORS.side, SHOP_COLORS.top);
     }
 
-    // Lender count
+    // Lender count badge
     ctx.fillStyle = '#FFF';
     ctx.font = 'bold 8px monospace';
     ctx.textAlign = 'center';
@@ -340,11 +378,10 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.textAlign = 'left';
 
     if (isHovered) drawHoverOutline(ctx, sw, sh);
-
     ctx.restore();
   }
 
-  // ─── Library (bibliothèque / dataroom) ───
+  // ─── Library (bibliothèque / dataroom) — sprite-based ───
 
   function drawLibrary(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { libraryPos, librarySize, project } = building;
@@ -357,19 +394,17 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.save();
     ctx.translate(libraryPos.x, libraryPos.y);
 
-    drawIsoBox(ctx, lw, lh,
-      isHovered ? lighten(LIBRARY_COLORS.base, 20) : LIBRARY_COLORS.base,
-      isHovered ? lighten(LIBRARY_COLORS.side, 15) : LIBRARY_COLORS.side,
-      isHovered ? lighten(LIBRARY_COLORS.top, 20) : LIBRARY_COLORS.top,
-    );
-
-    // Book shelves on front face
-    ctx.fillStyle = 'rgba(255, 255, 240, 0.5)';
-    const shelfCount = librarySize === 'large' ? 4 : librarySize === 'medium' ? 3 : 2;
-    for (let i = 0; i < shelfCount; i++) {
-      const sy = -lh * 0.25 - i * (lh * 0.15);
-      ctx.fillRect(3 + i * 1.5, sy + i * 1.2, 5, 3);
-      ctx.fillRect(10 + i * 1.2, sy + 1.5 + i * 1.2, 4, 3);
+    // Sprite by size
+    const spriteKey: SpriteKey = librarySize === 'large' ? 'library_lg' : librarySize === 'medium' ? 'library_md' : 'library_sm';
+    const sprite = getSprite(spriteKey);
+    if (sprite) {
+      const targetH = lh + lw / 4;
+      const scale = targetH / (sprite.height * 0.7);
+      const sprW = sprite.width * scale;
+      const sprH = sprite.height * scale;
+      ctx.drawImage(sprite, -sprW / 2, -lh - sprH * 0.2, sprW, sprH);
+    } else {
+      drawIsoBox(ctx, lw, lh, LIBRARY_COLORS.base, LIBRARY_COLORS.side, LIBRARY_COLORS.top);
     }
 
     // Document count badge
@@ -383,7 +418,6 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.textAlign = 'left';
 
     if (isHovered) drawHoverOutline(ctx, lw, lh);
-
     ctx.restore();
   }
 
