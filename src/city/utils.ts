@@ -12,7 +12,6 @@ import type {
   SyndicateSize,
   LibrarySize,
   GridState,
-  DistrictBounds,
 } from '../types/portfolio';
 import {
   GRID_SIZE,

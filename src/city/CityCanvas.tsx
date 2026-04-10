@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { CityState, CityBuilding, CityDistrict, ClickTarget } from '../types/portfolio';
-import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid, getDistrictAt, getDistrictForProject, fitsInDistrict } from '../types/portfolio';
-import type { DistrictBounds } from '../types/portfolio';
+import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid, getDistrictForProject, fitsInDistrict } from '../types/portfolio';
 import { formatMoney } from './utils';
 
 // ─── Color palettes ───
