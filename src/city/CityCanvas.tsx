@@ -714,8 +714,3 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '\u2026' : s;
 }
-
-function lighten(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16);
-  return `rgb(${Math.min(255, (num >> 16) + amount)},${Math.min(255, ((num >> 8) & 0xFF) + amount)},${Math.min(255, (num & 0xFF) + amount)})`;
-}
