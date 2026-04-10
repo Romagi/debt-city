@@ -49,6 +49,29 @@ const LIBRARY_SIZES: Record<string, { lw: number; lh: number }> = {
 const EMPTY_LOT_W = 24;
 const EMPTY_LOT_H = 10;
 
+/** Per-sprite rendering config: scale relative to footprint, and Y anchor offset */
+/** Per-sprite rendering calibration:
+ *  baseRatio: what fraction of sprite width is the iso base (the 2 visible edges). 1.0 = full width.
+ *  yOff: vertical anchor in ISO_TILE_H units (higher = base sits lower)
+ *  xOff: horizontal shift in ISO_TILE_W units (for off-center sprites) */
+const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: number }> = {
+  // These were good — don't touch
+  building_xs: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
+  building_sm: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
+  building_md: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
+  building_lg: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
+  building_xl: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
+  townhall:    { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
+  shop_sm:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
+  shop_md:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
+  // Mall: iso base is ~75% of sprite width, needs to fill the 4x2 footprint
+  shop_lg:     { baseRatio: 0.75, yOff: 1.3, xOff: 0 },
+  // These were good — don't touch
+  library_sm:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
+  library_md:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
+  library_lg:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
+};
+
 // ─── Sprite system ───
 
 const SPRITE_PATHS = {
@@ -155,16 +178,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
   // Load sprites on mount
   useEffect(() => { loadAllSprites().then(() => { needsRedrawRef.current = true; forceRender(n => n + 1); }); }, []);
 
-  function screenToWorld(screenX: number, screenY: number) {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const cam = cameraRef.current;
-    return {
-      x: (screenX - rect.width / 2 - cam.x) / cam.zoom,
-      y: (screenY - rect.height * 0.35 - cam.y) / cam.zoom,
-    };
-  }
 
   // ─── Drawing ───
 
@@ -262,12 +275,24 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
             }
           }
 
+          // Check if this cell belongs to the hovered structure
+          const hoveredStruct = hoveredTargetRef.current;
+          let isStructureHovered = false;
+          if (!drag && hoveredStruct && cell && cell.entityId === hoveredStruct.building.project.id) {
+            // Get the origin cell type to check if it matches the hovered kind
+            const oc = cell.originCol != null ? grid.cells[cell.originRow!]?.[cell.originCol!] : cell;
+            isStructureHovered = oc?.type === hoveredStruct.kind;
+          }
+
           if (isDragGhost) {
             drawTileDiamond(ctx, col, row,
               isDragValid ? 'rgba(100, 200, 100, 0.3)' : 'rgba(255, 80, 80, 0.3)',
               isDragValid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)', 1);
+          } else if (isStructureHovered) {
+            // Highlight all cells of the hovered building
+            drawTileDiamond(ctx, col, row, 'rgba(100, 200, 255, 0.2)', 'rgba(100, 200, 255, 0.5)', 1);
           } else if (isHovered && !drag) {
-            drawTileDiamond(ctx, col, row, 'rgba(100, 200, 100, 0.2)', 'rgba(100, 200, 100, 0.4)', 1);
+            drawTileDiamond(ctx, col, row, 'rgba(100, 200, 100, 0.15)', 'rgba(100, 200, 100, 0.3)', 0.5);
           } else if (!isOccupied) {
             // Empty cell inside district = grass
             if (grassSprite) {
@@ -353,7 +378,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
   function drawBuilding(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { x, y, width: w, height: h, state, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'building' && hoveredTargetRef.current?.building.project.id === project.id;
+
     const bw = w * 0.9;
     const bh = h;
 
@@ -362,16 +387,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
     // Draw sprite
     const spriteKey = getBuildingSpriteKey(bh);
-    const sprite = getSprite(spriteKey);
-    if (sprite) {
-      // The sprite is 64x64 with the building roughly centered.
-      // Scale so the sprite height matches bh + some ground margin.
-      const targetH = bh + bw / 4;
-      const scale = targetH / (sprite.height * 0.85);
-      const sw = sprite.width * scale;
-      const sh = sprite.height * scale;
-      ctx.drawImage(sprite, -sw / 2, -bh - sh * 0.15, sw, sh);
-    } else {
+    if (!drawSpriteOnGrid(ctx, spriteKey)) {
       const colors = BUILDING_COLORS[project.nature] ?? BUILDING_COLORS.real_estate;
       drawIsoBox(ctx, bw, bh, colors.base, colors.side, colors.top);
     }
@@ -401,15 +417,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
       }
     }
 
-    // Hover glow
-    if (isHovered) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, 2); ctx.lineTo(bw / 2 + 2, bw / 4 + 2); ctx.lineTo(bw / 2 + 2, bw / 4 - bh - 2);
-      ctx.lineTo(0, -bh - 2); ctx.lineTo(-bw / 2 - 2, bw / 4 - bh - 2); ctx.lineTo(-bw / 2 - 2, bw / 4 + 2);
-      ctx.closePath(); ctx.stroke();
-    }
 
     ctx.restore();
   }
@@ -418,7 +425,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
   function drawTownhall(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { townhallPos, alertLevel, trafficLight, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'townhall' && hoveredTargetRef.current?.building.project.id === project.id;
+
     const tw = TOWNHALL_W;
     const th = TOWNHALL_H;
     const covenantCount = project.covenants.length;
@@ -427,14 +434,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     ctx.translate(townhallPos.x, townhallPos.y);
 
     // Sprite or fallback
-    const sprite = getSprite('townhall');
-    if (sprite) {
-      const targetH = th + tw / 4;
-      const scale = targetH / (sprite.height * 0.7);
-      const sw = sprite.width * scale;
-      const sh = sprite.height * scale;
-      ctx.drawImage(sprite, -sw / 2, -th - sh * 0.2, sw, sh);
-    } else {
+    if (!drawSpriteOnGrid(ctx, 'townhall')) {
       drawIsoBox(ctx, tw, th, TOWNHALL_COLORS.base, TOWNHALL_COLORS.side, TOWNHALL_COLORS.top);
     }
 
@@ -475,7 +475,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
       }
     }
 
-    if (isHovered) drawHoverOutline(ctx, tw, th);
     ctx.restore();
   }
 
@@ -483,7 +482,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
   function drawShop(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { shopPos, syndicateSize, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'shop' && hoveredTargetRef.current?.building.project.id === project.id;
+
     const lenderCount = project.lenders.length;
     const sizeConfig = SHOP_SIZES[syndicateSize];
     if (!sizeConfig) return;
@@ -494,14 +493,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
     // Sprite by size
     const spriteKey: SpriteKey = syndicateSize === 'mall' ? 'shop_lg' : syndicateSize === 'shop' ? 'shop_md' : 'shop_sm';
-    const sprite = getSprite(spriteKey);
-    if (sprite) {
-      const targetH = sh + sw / 4;
-      const scale = targetH / (sprite.height * 0.7);
-      const sprW = sprite.width * scale;
-      const sprH = sprite.height * scale;
-      ctx.drawImage(sprite, -sprW / 2, -sh - sprH * 0.2, sprW, sprH);
-    } else {
+    if (!drawSpriteOnGrid(ctx, spriteKey)) {
       drawIsoBox(ctx, sw, sh, SHOP_COLORS.base, SHOP_COLORS.side, SHOP_COLORS.top);
     }
 
@@ -515,7 +507,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
 
-    if (isHovered) drawHoverOutline(ctx, sw, sh);
     ctx.restore();
   }
 
@@ -523,7 +514,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
   function drawLibrary(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { libraryPos, librarySize, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'library' && hoveredTargetRef.current?.building.project.id === project.id;
+
     const docCount = project.documents.length;
     const sizeConfig = LIBRARY_SIZES[librarySize];
     if (!sizeConfig) return;
@@ -534,14 +525,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
     // Sprite by size
     const spriteKey: SpriteKey = librarySize === 'large' ? 'library_lg' : librarySize === 'medium' ? 'library_md' : 'library_sm';
-    const sprite = getSprite(spriteKey);
-    if (sprite) {
-      const targetH = lh + lw / 4;
-      const scale = targetH / (sprite.height * 0.7);
-      const sprW = sprite.width * scale;
-      const sprH = sprite.height * scale;
-      ctx.drawImage(sprite, -sprW / 2, -lh - sprH * 0.2, sprW, sprH);
-    } else {
+    if (!drawSpriteOnGrid(ctx, spriteKey)) {
       drawIsoBox(ctx, lw, lh, LIBRARY_COLORS.base, LIBRARY_COLORS.side, LIBRARY_COLORS.top);
     }
 
@@ -555,7 +539,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
 
-    if (isHovered) drawHoverOutline(ctx, lw, lh);
     ctx.restore();
   }
 
@@ -579,6 +562,25 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     ctx.beginPath();
     ctx.moveTo(0, -h); ctx.lineTo(w / 2, w / 4 - h); ctx.lineTo(0, w / 2 - h); ctx.lineTo(-w / 2, w / 4 - h);
     ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+
+  /** Draw a sprite centered in its grid footprint.
+   *  Scale = fit sprite width into footprint iso width (cols * ISO_TILE_W).
+   *  Sprite is always horizontally centered on the grid origin point.
+   *  yOff controls vertical anchor (higher = base sits lower on the ground). */
+  function drawSpriteOnGrid(ctx: CanvasRenderingContext2D, spriteKey: SpriteKey) {
+    const sprite = getSprite(spriteKey);
+    if (!sprite) return false;
+    const [footCols] = STRUCTURE_SIZES[spriteKey] ?? [2, 2];
+    const footprintW = footCols * ISO_TILE_W;
+    const anchor = SPRITE_ANCHOR[spriteKey] ?? { baseRatio: 0.8, yOff: 0.8, xOff: 0 };
+    // Scale so the iso BASE of the sprite (not full width) fills the footprint
+    const baseW = sprite.width * anchor.baseRatio;
+    const scale = footprintW / baseW;
+    const sw = sprite.width * scale;
+    const sh = sprite.height * scale;
+    ctx.drawImage(sprite, -sw / 2 + ISO_TILE_W * anchor.xOff, -sh + ISO_TILE_H * anchor.yOff, sw, sh);
+    return true;
   }
 
   function drawEmptyLot(ctx: CanvasRenderingContext2D, pos: { x: number; y: number }) {
@@ -614,15 +616,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     ctx.fillText('+', 0, -h / 2 + w / 8);
 
     ctx.restore();
-  }
-
-  function drawHoverOutline(ctx: CanvasRenderingContext2D, w: number, h: number) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, 2); ctx.lineTo(w / 2 + 2, w / 4 + 2); ctx.lineTo(w / 2 + 2, w / 4 - h - 2);
-    ctx.lineTo(0, -h - 2); ctx.lineTo(-w / 2 - 2, w / 4 - h - 2); ctx.lineTo(-w / 2 - 2, w / 4 + 2);
-    ctx.closePath(); ctx.stroke();
   }
 
   // ─── Tooltip ───
@@ -721,57 +714,52 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     ctx.shadowBlur = 0;
   }
 
-  // ─── Hit testing — check townhall, shop, then building ───
-
-  function hitTestIsoBox(wx: number, wy: number, cx: number, cy: number, w: number, h: number): boolean {
-    const dx = wx - cx;
-    const dy = wy - cy;
-    return dx > -w / 2 - 6 && dx < w / 2 + 6 && dy > -h - 8 && dy < w / 4 + 6;
-  }
+  // ─── Hit testing — grid-based ───
 
   function findTargetAt(clientX: number, clientY: number): ClickTarget | null {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const { x: wx, y: wy } = screenToWorld(clientX - rect.left, clientY - rect.top);
+    const cam = cameraRef.current;
+    // Convert screen to world coords
+    const wx = (clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+    const wy = (clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+    // Convert world to grid
+    const { col, row } = screenToGrid(wx, wy);
+    if (col < 0 || row < 0 || col >= GRID_SIZE || row >= GRID_SIZE) return null;
 
-    for (const district of [...cityState.districts].reverse()) {
-      for (const b of [...district.buildings].reverse()) {
-        // Check shop first (front-most visually)
-        if (b.syndicateSize !== 'none') {
-          const sh = SHOP_SIZES[b.syndicateSize]?.sh ?? 14;
-          const sw = SHOP_SIZES[b.syndicateSize]?.sw ?? 28;
-          if (hitTestIsoBox(wx, wy, b.shopPos.x, b.shopPos.y, sw, sh)) {
-            return { kind: 'shop', building: b };
-          }
-        } else if (hitTestIsoBox(wx, wy, b.shopPos.x, b.shopPos.y, EMPTY_LOT_W, EMPTY_LOT_H)) {
-          return { kind: 'shop', building: b };
-        }
-        // Check townhall
-        if (b.project.covenants.length > 0) {
-          if (hitTestIsoBox(wx, wy, b.townhallPos.x, b.townhallPos.y, TOWNHALL_W, TOWNHALL_H)) {
-            return { kind: 'townhall', building: b };
-          }
-        } else if (hitTestIsoBox(wx, wy, b.townhallPos.x, b.townhallPos.y, EMPTY_LOT_W, EMPTY_LOT_H)) {
-          return { kind: 'townhall', building: b };
-        }
-        // Check main building
-        const bw = b.width * 0.9;
-        if (hitTestIsoBox(wx, wy, b.x, b.y, bw, b.height)) {
-          return { kind: 'building', building: b };
-        }
-        // Check library (behind the building — tested last)
-        if (b.project.documents.length > 0) {
-          const lc = LIBRARY_SIZES[b.librarySize];
-          if (lc && hitTestIsoBox(wx, wy, b.libraryPos.x, b.libraryPos.y, lc.lw, lc.lh)) {
-            return { kind: 'library', building: b };
-          }
-        } else if (hitTestIsoBox(wx, wy, b.libraryPos.x, b.libraryPos.y, EMPTY_LOT_W, EMPTY_LOT_H)) {
-          return { kind: 'library', building: b };
-        }
+    // Check what's on this grid cell
+    const cell = cityState.grid.cells[row]?.[col];
+    if (!cell || !cell.entityId) return null;
+
+    // Find the origin cell (for multi-cell structures)
+    const originCol = cell.originCol ?? col;
+    const originRow = cell.originRow ?? row;
+    const originCell = cityState.grid.cells[originRow]?.[originCol];
+    if (!originCell) return null;
+
+    // Find the building (CityBuilding) that this cell belongs to
+    const projectId = originCell.projectId ?? originCell.entityId;
+    let matchBuilding: CityBuilding | null = null;
+    for (const d of cityState.districts) {
+      for (const b of d.buildings) {
+        if (b.project.id === projectId) { matchBuilding = b; break; }
       }
+      if (matchBuilding) break;
     }
-    return null;
+    if (!matchBuilding) return null;
+
+    // Map cell type to click target kind
+    const typeToKind: Record<string, ClickTarget['kind']> = {
+      building: 'building',
+      townhall: 'townhall',
+      shop: 'shop',
+      library: 'library',
+    };
+    const kind = typeToKind[originCell.type];
+    if (!kind) return null;
+
+    return { kind, building: matchBuilding };
   }
 
   // ─── Event handlers ───

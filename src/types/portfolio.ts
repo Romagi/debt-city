@@ -357,17 +357,16 @@ export interface GridState {
 /** How many grid cells each structure type occupies [cols, rows]
  *  Based on actual sprite footprint (base isometric diamond), NOT height */
 export const STRUCTURE_SIZES: Record<string, [number, number]> = {
-  // All buildings have roughly the same base footprint — height varies, not footprint
-  building_xs: [2, 2],
-  building_sm: [2, 2],
-  building_md: [2, 2],
-  building_lg: [2, 2],
-  building_xl: [2, 2],
-  // Sub-structures
-  townhall: [2, 2],
+  // Buildings and townhall: 3×3 to match visual scale of library-lg and shop-mall
+  building_xs: [3, 3],
+  building_sm: [3, 3],
+  building_md: [3, 3],
+  building_lg: [3, 3],
+  building_xl: [3, 3],
+  townhall: [3, 3],
   shop_kiosk: [2, 2],
   shop_store: [2, 2],
-  shop_mall: [3, 3],
+  shop_mall: [4, 2],
   library_sm: [2, 2],
   library_md: [2, 2],
   library_lg: [3, 3],
