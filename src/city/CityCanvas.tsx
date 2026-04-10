@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { CityState, CityBuilding, CityDistrict, ClickTarget } from '../types/portfolio';
-import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, gridToScreen, screenToGrid } from '../types/portfolio';
+import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid } from '../types/portfolio';
 import { formatMoney } from './utils';
 
 // ─── Color palettes ───
@@ -106,6 +106,15 @@ function getBuildingSpriteKey(height: number): SpriteKey {
   return 'building_xs';
 }
 
+interface DragState {
+  building: CityBuilding;
+  structureKind: 'building' | 'townhall' | 'shop' | 'library';
+  gridCol: number;
+  gridRow: number;
+  gridW: number;
+  gridH: number;
+}
+
 interface Props {
   cityState: CityState;
   onTargetClick?: (target: ClickTarget) => void;
@@ -123,6 +132,8 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   const canvasSizeRef = useRef({ w: 0, h: 0 });
   const lastMoveTimeRef = useRef(0);
   const hoveredCellRef = useRef<{ col: number; row: number } | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
+  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null); // project ID of selected building
 
   // Fix 3 — Pre-sort districts (memoized, not per-frame)
   const sortedDistricts = useMemo(
@@ -191,6 +202,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     const hCell = hoveredCellRef.current;
     const tw = ISO_TILE_W;
     const th = ISO_TILE_H;
+    const drag = dragStateRef.current;
 
     for (let row = 0; row < grid.size; row++) {
       for (let col = 0; col < grid.size; col++) {
@@ -198,6 +210,26 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
         const cell = grid.cells[row]?.[col];
         const isHovered = hCell && hCell.col === col && hCell.row === row;
         const isOccupied = cell !== null;
+
+        // Check if this cell is part of a drag ghost preview
+        let isDragGhost = false;
+        let isDragValid = false;
+        if (drag && hCell) {
+          const gc = hCell.col - Math.floor(drag.gridW / 2);
+          const gr = hCell.row - Math.floor(drag.gridH / 2);
+          if (col >= gc && col < gc + drag.gridW && row >= gr && row < gr + drag.gridH) {
+            isDragGhost = true;
+            // Check if placement would be valid (ignore cells occupied by the dragged building itself)
+            isDragValid = true;
+            for (let dc = gc; dc < gc + drag.gridW && isDragValid; dc++) {
+              for (let dr = gr; dr < gr + drag.gridH && isDragValid; dr++) {
+                if (dc < 0 || dr < 0 || dc >= grid.size || dr >= grid.size) { isDragValid = false; break; }
+                const c = grid.cells[dr]?.[dc];
+                if (c && c.entityId !== drag.building.project.id) isDragValid = false;
+              }
+            }
+          }
+        }
 
         // Draw tile diamond
         ctx.beginPath();
@@ -207,18 +239,22 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
         ctx.lineTo(x - tw / 2, y);
         ctx.closePath();
 
-        if (isHovered) {
-          ctx.fillStyle = 'rgba(100, 200, 100, 0.25)';
+        if (isDragGhost) {
+          ctx.fillStyle = isDragValid ? 'rgba(100, 200, 100, 0.3)' : 'rgba(255, 80, 80, 0.3)';
           ctx.fill();
-          ctx.strokeStyle = 'rgba(100, 200, 100, 0.5)';
+          ctx.strokeStyle = isDragValid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        } else if (isHovered && !drag) {
+          ctx.fillStyle = 'rgba(100, 200, 100, 0.2)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(100, 200, 100, 0.4)';
           ctx.lineWidth = 1;
           ctx.stroke();
         } else if (isOccupied) {
-          // Occupied cells are subtle — buildings render on top
           ctx.fillStyle = 'rgba(80, 100, 80, 0.06)';
           ctx.fill();
         } else {
-          // Empty cell — very subtle grid line
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
           ctx.lineWidth = 0.5;
           ctx.stroke();
@@ -798,6 +834,26 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   // ─── Event handlers ───
 
   function handleMouseDown(e: React.MouseEvent) {
+    // Check if clicking on a building → start building drag
+    const target = findTargetAt(e.clientX, e.clientY);
+    if (target && e.shiftKey) {
+      // Shift+click = start building drag mode
+      const sizeKey = target.kind === 'building'
+        ? getBuildingSpriteKey(target.building.height)
+        : target.kind === 'townhall' ? 'townhall'
+        : target.kind === 'shop' ? (target.building.syndicateSize === 'mall' ? 'shop_mall' : target.building.syndicateSize === 'shop' ? 'shop_md' : 'shop_sm')
+        : (target.building.librarySize === 'large' ? 'library_lg' : target.building.librarySize === 'medium' ? 'library_md' : 'library_sm');
+      const size = STRUCTURE_SIZES[sizeKey] ?? [2, 2];
+      dragStateRef.current = {
+        building: target.building,
+        structureKind: target.kind as DragState['structureKind'],
+        gridCol: 0, gridRow: 0,
+        gridW: size[0], gridH: size[1],
+      };
+      needsRedrawRef.current = true;
+      return;
+    }
+    // Otherwise, start camera pan
     dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, camX: cameraRef.current.x, camY: cameraRef.current.y, moved: false };
   }
 
@@ -848,6 +904,14 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   }
 
   function handleMouseUp(e: React.MouseEvent) {
+    // If we were dragging a building, drop it
+    if (dragStateRef.current) {
+      // TODO: persist new position to state
+      dragStateRef.current = null;
+      needsRedrawRef.current = true;
+      return;
+    }
+
     const drag = dragRef.current;
     if (drag.active && !drag.moved) {
       const target = findTargetAt(e.clientX, e.clientY);
