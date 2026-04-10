@@ -236,7 +236,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawBuilding(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { x, y, width: w, height: h, state, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'building' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'building' && hoveredTargetRef.current?.building.project.id === project.id;
     const bw = w * 0.9;
     const bh = h;
 
@@ -298,7 +298,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawTownhall(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { townhallPos, alertLevel, trafficLight, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'townhall' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'townhall' && hoveredTargetRef.current?.building.project.id === project.id;
     const tw = TOWNHALL_W;
     const th = TOWNHALL_H;
     const covenantCount = project.covenants.length;
@@ -363,7 +363,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawShop(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { shopPos, syndicateSize, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'shop' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'shop' && hoveredTargetRef.current?.building.project.id === project.id;
     const lenderCount = project.lenders.length;
     const sizeConfig = SHOP_SIZES[syndicateSize];
     if (!sizeConfig) return;
@@ -403,7 +403,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawLibrary(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { libraryPos, librarySize, project } = building;
-    const isHovered = hoveredTargetRef.current?.kind === 'library' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'library' && hoveredTargetRef.current?.building.project.id === project.id;
     const docCount = project.documents.length;
     const sizeConfig = LIBRARY_SIZES[librarySize];
     if (!sizeConfig) return;
