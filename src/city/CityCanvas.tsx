@@ -850,12 +850,14 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     const target = findTargetAt(e.clientX, e.clientY);
     if (target) {
       // Click on a building — prepare for potential drag
+      // sizeKey determines the grid footprint, structureKind matches what's stored in the grid
       const sizeKey = target.kind === 'building'
         ? getBuildingSpriteKey(target.building.height)
         : target.kind === 'townhall' ? 'townhall'
         : target.kind === 'shop' ? (target.building.syndicateSize === 'mall' ? 'shop_mall' : target.building.syndicateSize === 'shop' ? 'shop_store' : 'shop_kiosk')
         : (target.building.librarySize === 'large' ? 'library_lg' : target.building.librarySize === 'medium' ? 'library_md' : 'library_sm');
       const size = STRUCTURE_SIZES[sizeKey] ?? [2, 2];
+      // structureKind MUST match what's stored in grid cells (e.g. 'shop', not 'shop_mall')
       // Store as a potential drag — only activates if mouse moves (DRAG_THRESHOLD)
       dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, camX: cameraRef.current.x, camY: cameraRef.current.y, moved: false };
       dragStateRef.current = {

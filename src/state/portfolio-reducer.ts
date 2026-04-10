@@ -30,7 +30,8 @@ type Action =
   | { type: 'SET_WAIVER'; payload: { projectId: string; covenantId: string; termId: string; granted: boolean } }
   | { type: 'ADD_DOCUMENT'; payload: { projectId: string; name: string; drive: DocumentDrive } }
   | { type: 'DELETE_DOCUMENT'; payload: { projectId: string; documentId: string } }
-  | { type: 'MOVE_STRUCTURE'; payload: { entityId: string; structureType: CellType; toCol: number; toRow: number; width: number; height: number } };
+  | { type: 'MOVE_STRUCTURE'; payload: { entityId: string; structureType: CellType; toCol: number; toRow: number; width: number; height: number } }
+  | { type: 'SYNC_GRID'; payload: { grid: import('../types/portfolio').GridState } };
 
 export type PortfolioAction = Action;
 
@@ -446,6 +447,13 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
     }
 
     // ── Grid ──
+    case 'SYNC_GRID': {
+      // Only sync if portfolio grid has no districts yet (first render)
+      if (state.grid.districts.length === 0 && action.payload.grid.districts.length > 0) {
+        return { ...state, grid: action.payload.grid };
+      }
+      return state;
+    }
     case 'MOVE_STRUCTURE': {
       const { entityId, structureType, toCol, toRow, width, height } = action.payload;
       // Validate: must stay within project's district

@@ -1,4 +1,4 @@
-import { useState, useMemo, useReducer } from 'react';
+import { useState, useMemo, useReducer, useEffect } from 'react';
 import CityCanvas from './city/CityCanvas';
 import BuildingPanel from './panels/BuildingPanel';
 import TownhallPanel from './panels/TownhallPanel';
@@ -37,6 +37,13 @@ export default function App() {
   const [modal, setModal] = useState<ModalState>(null);
 
   const cityState = useMemo(() => buildCityState(portfolio), [portfolio]);
+
+  // Sync grid back to portfolio on first render (so MOVE_STRUCTURE has districts)
+  useEffect(() => {
+    if (portfolio.grid.districts.length === 0 && cityState.grid.districts.length > 0) {
+      dispatch({ type: 'SYNC_GRID', payload: { grid: cityState.grid } });
+    }
+  }, [cityState.grid, portfolio.grid.districts.length]);
 
   // Keep activeTarget in sync with portfolio changes (project data may have changed)
   const syncedTarget = useMemo(() => {
