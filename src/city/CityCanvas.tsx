@@ -71,6 +71,8 @@ const SPRITE_PATHS = {
   crane: '/sprites/crane.png',
   // Environment
   ground: '/sprites/ground-tile.png',
+  tile_concrete: '/sprites/tile-concrete.png',
+  tile_grass: '/sprites/tile-grass.png',
   tree_sm: '/sprites/tree-sm.png',
   tree_lg: '/sprites/tree-lg.png',
   bush: '/sprites/bush.png',
@@ -204,23 +206,36 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     const th = ISO_TILE_H;
     const drag = dragStateRef.current;
 
-    // Only render cells inside districts (skip the vast empty grid)
+    const concreteSprite = getSprite('tile_concrete');
+
+    // Only render cells inside districts
     for (const d of grid.districts) {
-      // Draw district boundary — thicker outline
+      // Collect border cells and sort back-to-front (by row+col for correct overlap)
+      const borderSet = new Set<string>();
       for (let edge = 0; edge < d.size; edge++) {
-        // Top edge
-        drawTileDiamond(ctx, d.col + edge, d.row, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
-        // Bottom edge
-        drawTileDiamond(ctx, d.col + edge, d.row + d.size - 1, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
-        // Left edge
-        drawTileDiamond(ctx, d.col, d.row + edge, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
-        // Right edge
-        drawTileDiamond(ctx, d.col + d.size - 1, d.row + edge, 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.15)', 0.8);
+        borderSet.add(`${d.col + edge},${d.row}`);
+        borderSet.add(`${d.col + edge},${d.row + d.size - 1}`);
+        borderSet.add(`${d.col},${d.row + edge}`);
+        borderSet.add(`${d.col + d.size - 1},${d.row + edge}`);
+      }
+      const borderCells = [...borderSet].map(s => { const [c, r] = s.split(',').map(Number); return { col: c, row: r }; });
+      // Sort back-to-front: lower row+col drawn first
+      borderCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+
+      for (const { col, row } of borderCells) {
+        if (concreteSprite) {
+          const { x, y } = gridToScreen(col, row);
+          // Flat tile: 2:1 ratio, no thickness. Align diamond center to grid point.
+          ctx.drawImage(concreteSprite, x - tw / 2, y - th / 2, tw, th);
+        } else {
+          drawTileDiamond(ctx, col, row, 'rgba(180,170,160,0.12)', 'rgba(180,170,160,0.2)', 0.8);
+        }
       }
 
-      // Draw interior tiles
-      for (let row = d.row; row < d.row + d.size; row++) {
-        for (let col = d.col; col < d.col + d.size; col++) {
+      // Draw interior tiles (grass on empty cells, skip border cells already drawn)
+      const grassSprite = getSprite('tile_grass');
+      for (let row = d.row + 1; row < d.row + d.size - 1; row++) {
+        for (let col = d.col + 1; col < d.col + d.size - 1; col++) {
           const cell = grid.cells[row]?.[col];
           const isHovered = hCell && hCell.col === col && hCell.row === row;
           const isOccupied = cell !== null;
@@ -233,14 +248,13 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
             const gr = hCell.row - Math.floor(drag.gridH / 2);
             if (col >= gc && col < gc + drag.gridW && row >= gr && row < gr + drag.gridH) {
               isDragGhost = true;
-              // Valid = inside same district + no collision with other structures
               const dragDistrict = getDistrictForProject(grid, drag.building.project.id);
               isDragValid = !!dragDistrict && fitsInDistrict(dragDistrict, gc, gr, drag.gridW, drag.gridH);
               if (isDragValid) {
                 for (let dc = gc; dc < gc + drag.gridW && isDragValid; dc++) {
                   for (let dr = gr; dr < gr + drag.gridH && isDragValid; dr++) {
                     const c = grid.cells[dr]?.[dc];
-                    if (c && c.entityId === drag.building.project.id && c.type === drag.structureKind) continue; // Own cells are OK
+                    if (c && c.entityId === drag.building.project.id && c.type === drag.structureKind) continue;
                     if (c) isDragValid = false;
                   }
                 }
@@ -254,11 +268,16 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
               isDragValid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)', 1);
           } else if (isHovered && !drag) {
             drawTileDiamond(ctx, col, row, 'rgba(100, 200, 100, 0.2)', 'rgba(100, 200, 100, 0.4)', 1);
-          } else if (isOccupied) {
-            drawTileDiamond(ctx, col, row, 'rgba(80, 100, 80, 0.06)', null, 0);
-          } else {
-            drawTileDiamond(ctx, col, row, null, 'rgba(255, 255, 255, 0.03)', 0.5);
+          } else if (!isOccupied) {
+            // Empty cell inside district = grass
+            if (grassSprite) {
+              const { x, y } = gridToScreen(col, row);
+              ctx.drawImage(grassSprite, x - tw / 2, y - th / 2, tw, th);
+            } else {
+              drawTileDiamond(ctx, col, row, 'rgba(90, 160, 60, 0.1)', null, 0);
+            }
           }
+          // Occupied cells: no ground tile drawn (building renders on top)
         }
       }
     }
@@ -276,93 +295,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     }
   }
 
-  function drawDistrictGround(ctx: CanvasRenderingContext2D, district: CityDistrict) {
-    const b = district.buildings[0];
-    if (!b) return;
-    const s = district.scale;
-    const w = b.width; // TILE_WIDTH
-    const gw = w * 2.8 * s;
-
-    ctx.save();
-    ctx.translate(b.x, b.y);
-
-    // Sprite ground or fallback
-    const groundSprite = getSprite('ground');
-    if (groundSprite) {
-      const gh = gw * (groundSprite.height / groundSprite.width);
-      ctx.drawImage(groundSprite, -gw / 2, -gh * 0.35, gw, gh);
-    } else {
-      // Fallback: green isometric diamond
-      ctx.fillStyle = 'rgba(60, 120, 60, 0.12)';
-      ctx.strokeStyle = 'rgba(100, 160, 100, 0.15)';
-      ctx.lineWidth = 1;
-      const hw = gw / 2;
-      const hh = gw / 4;
-      ctx.beginPath();
-      ctx.moveTo(0, -hh * 0.3);
-      ctx.lineTo(hw, hh * 0.7 - hh * 0.3);
-      ctx.lineTo(0, hh * 1.4 - hh * 0.3);
-      ctx.lineTo(-hw, hh * 0.7 - hh * 0.3);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
-  function drawDistrictTrees(ctx: CanvasRenderingContext2D, district: CityDistrict, layer: 'back' | 'front') {
-    const b = district.buildings[0];
-    if (!b) return;
-    const s = district.scale;
-    const w = b.width; // TILE_WIDTH
-
-    // Deterministic "random" positions based on project id
-    const seed = b.project.id.charCodeAt(1) + b.project.id.charCodeAt(0);
-    const treePositions = [
-      // Back trees (drawn before buildings)
-      { x: b.x + w * 0.6 * s, y: b.y - w * 0.4 * s, back: true, big: false },
-      { x: b.x + w * 1.1 * s, y: b.y - w * 0.1 * s, back: true, big: (seed % 3 === 0) },
-      // Front trees (drawn after buildings)
-      { x: b.x - w * 0.4 * s, y: b.y + w * 0.8 * s, back: false, big: (seed % 2 === 0) },
-      { x: b.x + w * 0.5 * s, y: b.y + w * 0.9 * s, back: false, big: false },
-    ];
-
-    const trees = treePositions.filter(t => (layer === 'back') === t.back);
-
-    for (const t of trees) {
-      const spriteKey: SpriteKey = t.big ? 'tree_lg' : 'tree_sm';
-      const sprite = getSprite(spriteKey);
-      if (sprite) {
-        const ts = t.big ? 0.5 : 0.35;
-        const tw = sprite.width * ts;
-        const th = sprite.height * ts;
-        ctx.drawImage(sprite, t.x - tw / 2, t.y - th + 5, tw, th);
-      } else {
-        // Fallback: simple canvas tree
-        ctx.save();
-        ctx.translate(t.x, t.y);
-        const sz = t.big ? 8 : 5;
-        // Trunk
-        ctx.fillStyle = 'rgba(120, 80, 40, 0.6)';
-        ctx.fillRect(-1, -sz, 2, sz);
-        // Canopy
-        ctx.fillStyle = 'rgba(60, 140, 60, 0.5)';
-        ctx.beginPath();
-        ctx.arc(0, -sz - sz * 0.6, sz * 0.8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-  }
-
   function drawDistrict(ctx: CanvasRenderingContext2D, district: CityDistrict) {
-    // 1. Ground tile
-    drawDistrictGround(ctx, district);
-
-    // 2. Back trees
-    drawDistrictTrees(ctx, district, 'back');
-
     for (const building of district.buildings) {
       // 3. Library (behind, upper-left)
       if (building.project.documents.length > 0) {
@@ -386,10 +319,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
       }
     }
 
-    // 7. Front trees
-    drawDistrictTrees(ctx, district, 'front');
-
-    // 8. District label
+    // District label
     const b = district.buildings[0];
     if (!b) return;
     const labelX = b.x;

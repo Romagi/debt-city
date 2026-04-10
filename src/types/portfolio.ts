@@ -364,7 +364,7 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   building_lg: [2, 2],
   building_xl: [2, 2],
   // Sub-structures
-  townhall: [3, 3],
+  townhall: [2, 2],
   shop_kiosk: [2, 2],
   shop_store: [2, 2],
   shop_mall: [3, 3],
