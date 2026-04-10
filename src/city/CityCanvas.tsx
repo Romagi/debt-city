@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { CityState, CityBuilding, CityDistrict, ClickTarget } from '../types/portfolio';
 import { formatMoney } from './utils';
 
@@ -111,11 +111,29 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   const [, forceRender] = useState(0);
-  const [hoveredTarget, setHoveredTarget] = useState<ClickTarget | null>(null);
+  const hoveredTargetRef = useRef<ClickTarget | null>(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false });
+  const needsRedrawRef = useRef(true);
+  const canvasSizeRef = useRef({ w: 0, h: 0 });
+  const lastMoveTimeRef = useRef(0);
+
+  // Fix 3 — Pre-sort districts (memoized, not per-frame)
+  const sortedDistricts = useMemo(
+    () => [...cityState.districts].sort((a, b) => a.y - b.y),
+    [cityState]
+  );
+
+  // Check if any alerts need continuous animation
+  const hasAnimations = useMemo(
+    () => cityState.districts.some(d => d.buildings.some(b => b.alertLevel !== 'none')),
+    [cityState]
+  );
+
+  // Mark redraw needed when city state changes
+  useEffect(() => { needsRedrawRef.current = true; }, [cityState]);
 
   // Load sprites on mount
-  useEffect(() => { loadAllSprites().then(() => forceRender(n => n + 1)); }, []);
+  useEffect(() => { loadAllSprites().then(() => { needsRedrawRef.current = true; forceRender(n => n + 1); }); }, []);
 
   function screenToWorld(screenX: number, screenY: number) {
     const canvas = canvasRef.current;
@@ -130,6 +148,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   // ─── Drawing ───
 
+  // Fix 4 — draw reads hoveredTarget from ref, not state dependency
   const draw = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const cam = cameraRef.current;
     ctx.clearRect(0, 0, width, height);
@@ -148,16 +167,15 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     ctx.translate(width / 2 + cam.x, height * 0.35 + cam.y);
     ctx.scale(cam.zoom, cam.zoom);
 
-    // Sort by y, draw back-to-front
-    const sorted = [...cityState.districts].sort((a, b) => a.y - b.y);
-    for (const district of sorted) drawDistrict(ctx, district);
+    for (const district of sortedDistricts) drawDistrict(ctx, district);
 
-    // Tooltip
-    if (hoveredTarget) drawTooltip(ctx, hoveredTarget);
+    // Tooltip — read from ref
+    const hovered = hoveredTargetRef.current;
+    if (hovered) drawTooltip(ctx, hovered);
 
     ctx.restore();
     drawHUD(ctx, width);
-  }, [cityState, hoveredTarget]);
+  }, [cityState, sortedDistricts]);
 
   function drawDistrict(ctx: CanvasRenderingContext2D, district: CityDistrict) {
     for (const building of district.buildings) {
@@ -218,7 +236,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawBuilding(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { x, y, width: w, height: h, state, project } = building;
-    const isHovered = hoveredTarget?.kind === 'building' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'building' && hoveredTarget.building.project.id === project.id;
     const bw = w * 0.9;
     const bh = h;
 
@@ -280,7 +298,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawTownhall(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { townhallPos, alertLevel, trafficLight, project } = building;
-    const isHovered = hoveredTarget?.kind === 'townhall' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'townhall' && hoveredTarget.building.project.id === project.id;
     const tw = TOWNHALL_W;
     const th = TOWNHALL_H;
     const covenantCount = project.covenants.length;
@@ -345,7 +363,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawShop(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { shopPos, syndicateSize, project } = building;
-    const isHovered = hoveredTarget?.kind === 'shop' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'shop' && hoveredTarget.building.project.id === project.id;
     const lenderCount = project.lenders.length;
     const sizeConfig = SHOP_SIZES[syndicateSize];
     if (!sizeConfig) return;
@@ -385,7 +403,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
   function drawLibrary(ctx: CanvasRenderingContext2D, building: CityBuilding) {
     const { libraryPos, librarySize, project } = building;
-    const isHovered = hoveredTarget?.kind === 'library' && hoveredTarget.building.project.id === project.id;
+    const isHovered = hoveredTargetRef.current?.kind === 'library' && hoveredTarget.building.project.id === project.id;
     const docCount = project.documents.length;
     const sizeConfig = LIBRARY_SIZES[librarySize];
     if (!sizeConfig) return;
@@ -643,6 +661,11 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   }
 
   function handleMouseMove(e: React.MouseEvent) {
+    // Fix 5 — Throttle to ~60fps
+    const now = performance.now();
+    if (now - lastMoveTimeRef.current < 16) return;
+    lastMoveTimeRef.current = now;
+
     const drag = dragRef.current;
     if (drag.active) {
       const dx = e.clientX - drag.startX;
@@ -650,13 +673,17 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
       if (!drag.moved && Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) drag.moved = true;
       if (drag.moved) {
         cameraRef.current = { ...cameraRef.current, x: drag.camX + dx, y: drag.camY + dy };
-        forceRender(n => n + 1);
+        needsRedrawRef.current = true;
       }
     } else {
       const target = findTargetAt(e.clientX, e.clientY);
-      const prevId = hoveredTarget ? `${hoveredTarget.kind}-${hoveredTarget.building.project.id}` : null;
+      const prev = hoveredTargetRef.current;
+      const prevId = prev ? `${prev.kind}-${prev.building.project.id}` : null;
       const nextId = target ? `${target.kind}-${target.building.project.id}` : null;
-      if (prevId !== nextId) setHoveredTarget(target);
+      if (prevId !== nextId) {
+        hoveredTargetRef.current = target;
+        needsRedrawRef.current = true;
+      }
     }
   }
 
@@ -672,10 +699,29 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   function handleWheel(e: React.WheelEvent) {
     e.preventDefault();
     cameraRef.current = { ...cameraRef.current, zoom: Math.max(0.3, Math.min(3, cameraRef.current.zoom - e.deltaY * 0.001)) };
-    forceRender(n => n + 1);
+    needsRedrawRef.current = true;
   }
 
-  // ─── Render loop ───
+  // ─── Fix 1 — Canvas resize only on actual resize ───
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    function updateSize() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas!.getBoundingClientRect();
+      canvas!.width = rect.width * dpr;
+      canvas!.height = rect.height * dpr;
+      canvasSizeRef.current = { w: rect.width, h: rect.height };
+      needsRedrawRef.current = true;
+    }
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
+
+  // ─── Fix 2 — Conditional RAF loop ───
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -684,19 +730,22 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     if (!ctx) return;
     let id: number;
     function render() {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas!.getBoundingClientRect();
-      canvas!.width = rect.width * dpr;
-      canvas!.height = rect.height * dpr;
-      ctx!.scale(dpr, dpr);
-      draw(ctx!, rect.width, rect.height);
+      // Only redraw if needed OR if animations are active
+      if (needsRedrawRef.current || hasAnimations) {
+        const dpr = window.devicePixelRatio || 1;
+        const { w, h } = canvasSizeRef.current;
+        ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+        draw(ctx!, w, h);
+        needsRedrawRef.current = false;
+      }
       id = requestAnimationFrame(render);
     }
+    needsRedrawRef.current = true;
     render();
     return () => cancelAnimationFrame(id);
-  }, [draw]);
+  }, [draw, hasAnimations]);
 
-  const cursorStyle = dragRef.current.active && dragRef.current.moved ? 'grabbing' : hoveredTarget ? 'pointer' : 'grab';
+  const cursorStyle = dragRef.current.active && dragRef.current.moved ? 'grabbing' : hoveredTargetRef.current ? 'pointer' : 'grab';
 
   return (
     <canvas
@@ -705,7 +754,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={() => { dragRef.current = { ...dragRef.current, active: false }; setHoveredTarget(null); }}
+      onMouseLeave={() => { dragRef.current = { ...dragRef.current, active: false }; hoveredTargetRef.current = null; needsRedrawRef.current = true; }}
       onWheel={handleWheel}
     />
   );
