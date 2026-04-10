@@ -309,6 +309,7 @@ export interface CityDistrict {
   buildings: CityBuilding[];
   x: number;
   y: number;
+  scale: number;
   esgScore: 'good' | 'neutral' | 'bad';
 }
 

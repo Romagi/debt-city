@@ -68,6 +68,11 @@ const SPRITE_PATHS = {
   // Extras
   empty_lot: '/sprites/empty-lot.png',
   crane: '/sprites/crane.png',
+  // Environment
+  ground: '/sprites/ground-tile.png',
+  tree_sm: '/sprites/tree-sm.png',
+  tree_lg: '/sprites/tree-lg.png',
+  bush: '/sprites/bush.png',
 } as const;
 
 type SpriteKey = keyof typeof SPRITE_PATHS;
@@ -177,24 +182,109 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
     drawHUD(ctx, width);
   }, [cityState, sortedDistricts]);
 
+  function drawDistrictGround(ctx: CanvasRenderingContext2D, district: CityDistrict) {
+    const b = district.buildings[0];
+    if (!b) return;
+    const s = district.scale;
+    const w = b.width; // TILE_WIDTH
+    const gw = w * 2.8 * s;
+
+    ctx.save();
+    ctx.translate(b.x, b.y);
+
+    // Sprite ground or fallback
+    const groundSprite = getSprite('ground');
+    if (groundSprite) {
+      const gh = gw * (groundSprite.height / groundSprite.width);
+      ctx.drawImage(groundSprite, -gw / 2, -gh * 0.35, gw, gh);
+    } else {
+      // Fallback: green isometric diamond
+      ctx.fillStyle = 'rgba(60, 120, 60, 0.12)';
+      ctx.strokeStyle = 'rgba(100, 160, 100, 0.15)';
+      ctx.lineWidth = 1;
+      const hw = gw / 2;
+      const hh = gw / 4;
+      ctx.beginPath();
+      ctx.moveTo(0, -hh * 0.3);
+      ctx.lineTo(hw, hh * 0.7 - hh * 0.3);
+      ctx.lineTo(0, hh * 1.4 - hh * 0.3);
+      ctx.lineTo(-hw, hh * 0.7 - hh * 0.3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function drawDistrictTrees(ctx: CanvasRenderingContext2D, district: CityDistrict, layer: 'back' | 'front') {
+    const b = district.buildings[0];
+    if (!b) return;
+    const s = district.scale;
+    const w = b.width; // TILE_WIDTH
+
+    // Deterministic "random" positions based on project id
+    const seed = b.project.id.charCodeAt(1) + b.project.id.charCodeAt(0);
+    const treePositions = [
+      // Back trees (drawn before buildings)
+      { x: b.x + w * 0.6 * s, y: b.y - w * 0.4 * s, back: true, big: false },
+      { x: b.x + w * 1.1 * s, y: b.y - w * 0.1 * s, back: true, big: (seed % 3 === 0) },
+      // Front trees (drawn after buildings)
+      { x: b.x - w * 0.4 * s, y: b.y + w * 0.8 * s, back: false, big: (seed % 2 === 0) },
+      { x: b.x + w * 0.5 * s, y: b.y + w * 0.9 * s, back: false, big: false },
+    ];
+
+    const trees = treePositions.filter(t => (layer === 'back') === t.back);
+
+    for (const t of trees) {
+      const spriteKey: SpriteKey = t.big ? 'tree_lg' : 'tree_sm';
+      const sprite = getSprite(spriteKey);
+      if (sprite) {
+        const ts = t.big ? 0.5 : 0.35;
+        const tw = sprite.width * ts;
+        const th = sprite.height * ts;
+        ctx.drawImage(sprite, t.x - tw / 2, t.y - th + 5, tw, th);
+      } else {
+        // Fallback: simple canvas tree
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        const sz = t.big ? 8 : 5;
+        // Trunk
+        ctx.fillStyle = 'rgba(120, 80, 40, 0.6)';
+        ctx.fillRect(-1, -sz, 2, sz);
+        // Canopy
+        ctx.fillStyle = 'rgba(60, 140, 60, 0.5)';
+        ctx.beginPath();
+        ctx.arc(0, -sz - sz * 0.6, sz * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
   function drawDistrict(ctx: CanvasRenderingContext2D, district: CityDistrict) {
+    // 1. Ground tile
+    drawDistrictGround(ctx, district);
+
+    // 2. Back trees
+    drawDistrictTrees(ctx, district, 'back');
+
     for (const building of district.buildings) {
-      // Draw order: back to front for correct isometric overlap
-      // 1. Library (behind, upper-left)
+      // 3. Library (behind, upper-left)
       if (building.project.documents.length > 0) {
         drawLibrary(ctx, building);
       } else {
         drawEmptyLot(ctx, building.libraryPos);
       }
-      // 2. Townhall (left)
+      // 4. Townhall (left)
       if (building.project.covenants.length > 0) {
         drawTownhall(ctx, building);
       } else {
         drawEmptyLot(ctx, building.townhallPos);
       }
-      // 3. Main building (center)
+      // 5. Main building (center)
       drawBuilding(ctx, building);
-      // 4. Shop (right, front-most)
+      // 6. Shop (right, front-most)
       if (building.syndicateSize !== 'none') {
         drawShop(ctx, building);
       } else {
@@ -202,11 +292,14 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
       }
     }
 
-    // District label
+    // 7. Front trees
+    drawDistrictTrees(ctx, district, 'front');
+
+    // 8. District label
     const b = district.buildings[0];
     if (!b) return;
     const labelX = b.x;
-    const labelY = b.y + b.width * 0.55 + 14;
+    const labelY = b.y + b.width * 0.55 * district.scale + 18;
 
     ctx.save();
     ctx.textAlign = 'center';

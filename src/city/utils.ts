@@ -93,27 +93,30 @@ function mapWeather(portfolio: Portfolio): WeatherState {
 
 // ─── Sub-structure positions relative to building origin ───
 // Layout: library (back-left), building (center), townhall (front-left), shop (front-right)
+// `s` = district scale factor (bigger deal → more spread out)
 
-/** Townhall (mairie) — front-left of the building */
-function townhallPosition(bx: number, by: number, w: number): { x: number; y: number } {
-  return { x: bx - w * 0.95, y: by + w * 0.48 };
+function townhallPosition(bx: number, by: number, w: number, s: number): { x: number; y: number } {
+  return { x: bx - w * 0.95 * s, y: by + w * 0.48 * s };
 }
 
-/** Shop (syndicate) — front-right of the building */
-function shopPosition(bx: number, by: number, w: number): { x: number; y: number } {
-  return { x: bx + w * 0.95, y: by + w * 0.48 };
+function shopPosition(bx: number, by: number, w: number, s: number): { x: number; y: number } {
+  return { x: bx + w * 0.95 * s, y: by + w * 0.48 * s };
 }
 
-/** Library (bibliothèque) — back-left, clearly visible above building */
-function libraryPosition(bx: number, by: number, w: number): { x: number; y: number } {
-  return { x: bx - w * 0.95, y: by - w * 0.48 };
+function libraryPosition(bx: number, by: number, w: number, s: number): { x: number; y: number } {
+  return { x: bx - w * 0.95 * s, y: by - w * 0.48 * s };
+}
+
+/** District scale: bigger deals get larger neighborhoods */
+function computeDistrictScale(amount: number): number {
+  return 0.8 + Math.min(amount / MAX_FUNDING, 1) * 0.5;
 }
 
 // ─── Build city layout ───
 
 const GRID_COLS = 3;
-const GRID_SPACING_COL = 9;
-const GRID_SPACING_ROW = 9;
+const GRID_SPACING_COL = 11;
+const GRID_SPACING_ROW = 11;
 
 export function buildCityState(portfolio: Portfolio): CityState {
   const districts: CityDistrict[] = [];
@@ -130,7 +133,9 @@ export function buildCityState(portfolio: Portfolio): CityState {
     const gridRow = Math.floor(index / GRID_COLS);
     const { x, y } = gridToIso(gridCol * GRID_SPACING_COL, gridRow * GRID_SPACING_ROW);
 
-    const height = computeBuildingHeight(project.globalFundingAmount.amount);
+    const amount = project.globalFundingAmount.amount;
+    const height = computeBuildingHeight(amount);
+    const scale = computeDistrictScale(amount);
     const borrower = portfolio.borrowers.find(b => b.id === project.borrowerId)!;
 
     const mainBuilding: CityBuilding = {
@@ -145,9 +150,9 @@ export function buildCityState(portfolio: Portfolio): CityState {
       trafficLight: mapTrafficLight(project),
       syndicateSize: mapSyndicateSize(project.lenders.length),
       librarySize: mapLibrarySize(project.documents.length),
-      townhallPos: townhallPosition(x, y, TILE_WIDTH),
-      shopPos: shopPosition(x, y, TILE_WIDTH),
-      libraryPos: libraryPosition(x, y, TILE_WIDTH),
+      townhallPos: townhallPosition(x, y, TILE_WIDTH, scale),
+      shopPos: shopPosition(x, y, TILE_WIDTH, scale),
+      libraryPos: libraryPosition(x, y, TILE_WIDTH, scale),
     };
 
     districts.push({
@@ -155,6 +160,7 @@ export function buildCityState(portfolio: Portfolio): CityState {
       buildings: [mainBuilding],
       x,
       y,
+      scale,
       esgScore: mapEsgScore(borrower),
     });
   });
