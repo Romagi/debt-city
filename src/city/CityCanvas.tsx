@@ -271,14 +271,17 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
 
     // Crane for draft projects
     if (state === 'construction') {
-      ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(bw / 4, -bh); ctx.lineTo(bw / 4, -bh - 35); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(bw / 4 - 18, -bh - 35); ctx.lineTo(bw / 4 + 25, -bh - 35); ctx.stroke();
-      ctx.strokeStyle = '#CCA300'; ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(bw / 4, -bh - 35); ctx.lineTo(bw / 4 + 25, -bh - 30); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(bw / 4, -bh - 35); ctx.lineTo(bw / 4 - 18, -bh - 30); ctx.stroke();
-      ctx.strokeStyle = '#CCA300'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(bw / 4 + 20, -bh - 35); ctx.lineTo(bw / 4 + 20, -bh - 18); ctx.stroke();
+      const craneSprite = getSprite('crane');
+      if (craneSprite) {
+        const craneH = bh * 0.6;
+        const craneW = craneH * (craneSprite.width / craneSprite.height);
+        ctx.drawImage(craneSprite, bw / 4 - craneW * 0.3, -bh - craneH * 0.7, craneW, craneH);
+      } else {
+        // Fallback canvas crane
+        ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(bw / 4, -bh); ctx.lineTo(bw / 4, -bh - 35); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bw / 4 - 18, -bh - 35); ctx.lineTo(bw / 4 + 25, -bh - 35); ctx.stroke();
+      }
     }
 
     // Hover glow
@@ -683,6 +686,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
       if (prevId !== nextId) {
         hoveredTargetRef.current = target;
         needsRedrawRef.current = true;
+        forceRender(n => n + 1); // Update cursor style
       }
     }
   }
@@ -726,7 +730,7 @@ export default function CityCanvas({ cityState, onTargetClick }: Props) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
     let id: number;
     function render() {
