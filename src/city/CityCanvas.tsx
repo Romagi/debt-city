@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import type { CityState, CityBuilding, CityDistrict, ClickTarget } from '../types/portfolio';
-import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid, getDistrictForProject, fitsInDistrict } from '../types/portfolio';
+import type { CityState, CityBuilding, CityDistrict, ClickTarget, CellType } from '../types/portfolio';
+import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid, getDistrictForProject, getDistrictAt, fitsInDistrict, canPlace, DECORATION_TYPES } from '../types/portfolio';
 import { formatMoney } from './utils';
 
 // ─── Color palettes ───
@@ -64,12 +64,22 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   townhall:    { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
   shop_sm:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
   shop_md:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
-  // Mall: iso base is ~75% of sprite width, needs to fill the 4x2 footprint
-  shop_lg:     { baseRatio: 0.75, yOff: 1.3, xOff: 0 },
+  // Mall: 3x3 footprint
+  shop_lg:     { baseRatio: 0.88, yOff: 1.55, xOff: 0 },
   // These were good — don't touch
   library_sm:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
   library_md:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
   library_lg:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
+  // Decorations
+  tree_sm:       { baseRatio: 1.0, yOff: 0.3, xOff: 0 },
+  tree_lg:       { baseRatio: 1.0, yOff: 0.3, xOff: 0 },
+  park:          { baseRatio: 1.0, yOff: 0.8, xOff: 0 },
+  road_straight_1: { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
+  road_straight_2: { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
+  road_cross:      { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
+  road_turn:       { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
+  tile_sidewalk:   { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
+  bush:          { baseRatio: 1.0, yOff: 0.5, xOff: 0 },
 };
 
 // ─── Sprite system ───
@@ -99,6 +109,12 @@ const SPRITE_PATHS = {
   tree_sm: '/sprites/tree-sm.png',
   tree_lg: '/sprites/tree-lg.png',
   bush: '/sprites/bush.png',
+  park: '/sprites/park.png',
+  road_straight_1: '/sprites/road-straight-1.png',
+  road_straight_2: '/sprites/road-straight-2.png',
+  road_cross: '/sprites/road-cross.png',
+  road_turn: '/sprites/road-turn.png',
+  tile_sidewalk: '/sprites/tile-concrete.png',
 } as const;
 
 type SpriteKey = keyof typeof SPRITE_PATHS;
@@ -140,15 +156,35 @@ interface DragState {
   gridH: number;
 }
 
+export interface PlacementMode {
+  deco: CellType;
+  eraser: boolean;
+}
+
 interface Props {
   cityState: CityState;
   onTargetClick?: (target: ClickTarget) => void;
   onMoveStructure?: (entityId: string, structureType: string, toCol: number, toRow: number, width: number, height: number) => void;
+  placementMode?: PlacementMode | null;
+  onPlaceDecoration?: (col: number, row: number, projectId: string) => void;
+  onRemoveDecoration?: (col: number, row: number) => void;
 }
 
 const DRAG_THRESHOLD = 4;
 
-export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }: Props) {
+/** Map CellType to SpriteKey for decorations */
+const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
+  tree_sm: 'tree_sm',
+  tree_lg: 'tree_lg',
+  park: 'park',
+  road: 'road_straight_1',
+  road_2: 'road_straight_2',
+  road_cross: 'road_cross',
+  sidewalk: 'tile_sidewalk',
+  bush: 'bush',
+};
+
+export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   const [, forceRender] = useState(0);
@@ -172,8 +208,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     [cityState]
   );
 
-  // Mark redraw needed when city state changes
-  useEffect(() => { needsRedrawRef.current = true; }, [cityState]);
+  // Mark redraw needed when city state or placement mode changes
+  useEffect(() => { needsRedrawRef.current = true; }, [cityState, placementMode]);
 
   // Load sprites on mount
   useEffect(() => { loadAllSprites().then(() => { needsRedrawRef.current = true; forceRender(n => n + 1); }); }, []);
@@ -203,6 +239,9 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     // Draw grid
     drawGrid(ctx, cityState.grid);
 
+    // Draw decorations (between ground and buildings)
+    drawDecorations(ctx, cityState.grid);
+
     for (const district of sortedDistricts) drawDistrict(ctx, district);
 
     // Tooltip — read from ref
@@ -211,7 +250,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
     ctx.restore();
     drawHUD(ctx, width);
-  }, [cityState, sortedDistricts]);
+  }, [cityState, sortedDistricts, placementMode]);
 
   function drawGrid(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
     const hCell = hoveredCellRef.current;
@@ -221,7 +260,38 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
 
     const concreteSprite = getSprite('tile_concrete');
 
-    // Only render cells inside districts
+    // Draw gap cells (between districts) as concrete
+    if (grid.districts.length > 0) {
+      let minCol = Infinity, minRow = Infinity, maxCol = -Infinity, maxRow = -Infinity;
+      for (const d of grid.districts) {
+        minCol = Math.min(minCol, d.col);
+        minRow = Math.min(minRow, d.row);
+        maxCol = Math.max(maxCol, d.col + d.size);
+        maxRow = Math.max(maxRow, d.row + d.size);
+      }
+      // Collect gap cells and sort back-to-front
+      const gapCells: { col: number; row: number }[] = [];
+      for (let row = minRow; row < maxRow; row++) {
+        for (let col = minCol; col < maxCol; col++) {
+          if (!getDistrictAt(grid, col, row)) {
+            gapCells.push({ col, row });
+          }
+        }
+      }
+      gapCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+      for (const { col, row } of gapCells) {
+        const cell = grid.cells[row]?.[col];
+        if (cell && DECORATION_TYPES.has(cell.type)) continue; // drawn by drawDecorations
+        if (concreteSprite) {
+          const { x, y } = gridToScreen(col, row);
+          ctx.drawImage(concreteSprite, x - tw / 2, y - th / 2, tw, th);
+        } else {
+          drawTileDiamond(ctx, col, row, 'rgba(180,170,160,0.08)', 'rgba(180,170,160,0.12)', 0.5);
+        }
+      }
+    }
+
+    // Render cells inside districts
     for (const d of grid.districts) {
       // Collect border cells and sort back-to-front (by row+col for correct overlap)
       const borderSet = new Set<string>();
@@ -317,6 +387,111 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
       c.closePath();
       if (fill) { c.fillStyle = fill; c.fill(); }
       if (stroke) { c.strokeStyle = stroke; c.lineWidth = lineW; c.stroke(); }
+    }
+  }
+
+  function drawDecorations(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
+    const hCell = hoveredCellRef.current;
+    const tw = ISO_TILE_W;
+    const th = ISO_TILE_H;
+
+    // Collect decoration origin cells and sort back-to-front
+    const decos: { col: number; row: number; type: CellType }[] = [];
+    for (let r = 0; r < grid.size; r++) {
+      for (let c = 0; c < grid.size; c++) {
+        const cell = grid.cells[r]?.[c];
+        if (cell && DECORATION_TYPES.has(cell.type) && cell.originCol == null && cell.originRow == null) {
+          decos.push({ col: c, row: r, type: cell.type });
+        }
+      }
+    }
+    decos.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+
+    for (const d of decos) {
+      const spriteKey = DECO_SPRITE_MAP[d.type];
+      if (!spriteKey) continue;
+      const sprite = getSprite(spriteKey);
+      if (!sprite) continue;
+      const [fw, fh] = STRUCTURE_SIZES[d.type] ?? [1, 1];
+      // Center of footprint
+      const cx = d.col + fw / 2;
+      const cy = d.row + fh / 2;
+      const { x, y } = gridToScreen(cx, cy);
+      ctx.save();
+      ctx.translate(x, y);
+      drawSpriteOnGrid(ctx, spriteKey);
+      ctx.restore();
+    }
+
+    // Ghost preview for placement mode
+    if (placementMode && !placementMode.eraser && hCell) {
+      const [pw, ph] = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1];
+      const gc = hCell.col - Math.floor(pw / 2);
+      const gr = hCell.row - Math.floor(ph / 2);
+      const district = getDistrictAt(grid, hCell.col, hCell.row);
+      // Valid if: fits in district (if inside one), OR is in a gap area; and cells are free
+      const fitsDistrict = district ? fitsInDistrict(district, gc, gr, pw, ph) : true;
+      const valid = fitsDistrict && canPlace(grid, gc, gr, pw, ph);
+
+      // Draw ghost tiles
+      for (let dc = gc; dc < gc + pw; dc++) {
+        for (let dr = gr; dr < gr + ph; dr++) {
+          const { x, y } = gridToScreen(dc, dr);
+          ctx.beginPath();
+          ctx.moveTo(x, y - th / 2);
+          ctx.lineTo(x + tw / 2, y);
+          ctx.lineTo(x, y + th / 2);
+          ctx.lineTo(x - tw / 2, y);
+          ctx.closePath();
+          ctx.fillStyle = valid ? 'rgba(100, 200, 100, 0.3)' : 'rgba(255, 80, 80, 0.3)';
+          ctx.fill();
+          ctx.strokeStyle = valid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+
+      // Draw ghost sprite at 50% opacity
+      const spriteKey = DECO_SPRITE_MAP[placementMode.deco];
+      if (spriteKey && valid) {
+        const cx = gc + pw / 2;
+        const cy = gr + ph / 2;
+        const { x, y } = gridToScreen(cx, cy);
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.translate(x, y);
+        drawSpriteOnGrid(ctx, spriteKey);
+        ctx.restore();
+      }
+    }
+
+    // Eraser highlight
+    if (placementMode?.eraser && hCell) {
+      const cell = grid.cells[hCell.row]?.[hCell.col];
+      if (cell && DECORATION_TYPES.has(cell.type)) {
+        const oc = cell.originCol ?? hCell.col;
+        const or_ = cell.originRow ?? hCell.row;
+        const origin = grid.cells[or_]?.[oc];
+        if (origin) {
+          const [fw, fh] = STRUCTURE_SIZES[origin.type] ?? [1, 1];
+          for (let dc = oc; dc < oc + fw; dc++) {
+            for (let dr = or_; dr < or_ + fh; dr++) {
+              const { x, y } = gridToScreen(dc, dr);
+              ctx.beginPath();
+              ctx.moveTo(x, y - th / 2);
+              ctx.lineTo(x + tw / 2, y);
+              ctx.lineTo(x, y + th / 2);
+              ctx.lineTo(x - tw / 2, y);
+              ctx.closePath();
+              ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
+              ctx.fill();
+              ctx.strokeStyle = 'rgba(255, 80, 80, 0.6)';
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+        }
+      }
     }
   }
 
@@ -749,6 +924,9 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     }
     if (!matchBuilding) return null;
 
+    // Decorations don't produce click targets
+    if (DECORATION_TYPES.has(originCell.type)) return null;
+
     // Map cell type to click target kind
     const typeToKind: Record<string, ClickTarget['kind']> = {
       building: 'building',
@@ -765,6 +943,12 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
   // ─── Event handlers ───
 
   function handleMouseDown(e: React.MouseEvent) {
+    // In placement mode, don't initiate building drags
+    if (placementMode) {
+      dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, camX: cameraRef.current.x, camY: cameraRef.current.y, moved: false };
+      dragStateRef.current = null;
+      return;
+    }
     const target = findTargetAt(e.clientX, e.clientY);
     if (target) {
       // Click on a building — prepare for potential drag
@@ -856,6 +1040,31 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     const drag = dragRef.current;
     const ds = dragStateRef.current;
 
+    // Placement mode: place or remove decoration on click
+    if (placementMode && drag.active && !drag.moved) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const cam = cameraRef.current;
+        const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+        const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+        const { col, row } = screenToGrid(wx, wy);
+
+        if (placementMode.eraser) {
+          onRemoveDecoration?.(col, row);
+        } else {
+          const [pw, ph] = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1];
+          const gc = col - Math.floor(pw / 2);
+          const gr = row - Math.floor(ph / 2);
+          const district = getDistrictAt(cityState.grid, col, row);
+          onPlaceDecoration?.(gc, gr, district?.projectId ?? '');
+        }
+      }
+      dragRef.current = { ...drag, active: false };
+      needsRedrawRef.current = true;
+      return;
+    }
+
     if (ds && drag.active && drag.moved && hoveredCellRef.current) {
       // Building was dragged — drop it
       const hc = hoveredCellRef.current;
@@ -931,7 +1140,25 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
     return () => cancelAnimationFrame(id);
   }, [draw, hasAnimations]);
 
-  const cursorStyle = dragRef.current.active && dragRef.current.moved ? 'grabbing' : hoveredTargetRef.current ? 'pointer' : 'grab';
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const cam = cameraRef.current;
+    const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+    const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+    const { col, row } = screenToGrid(wx, wy);
+    const cell = cityState.grid.cells[row]?.[col];
+    if (cell && DECORATION_TYPES.has(cell.type)) {
+      onRemoveDecoration?.(col, row);
+      needsRedrawRef.current = true;
+    }
+  }
+
+  const cursorStyle = placementMode
+    ? (placementMode.eraser ? 'crosshair' : 'copy')
+    : dragRef.current.active && dragRef.current.moved ? 'grabbing' : hoveredTargetRef.current ? 'pointer' : 'grab';
 
   return (
     <canvas
@@ -942,6 +1169,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure }
       onMouseUp={handleMouseUp}
       onMouseLeave={() => { dragRef.current = { ...dragRef.current, active: false }; hoveredTargetRef.current = null; needsRedrawRef.current = true; }}
       onWheel={handleWheel}
+      onContextMenu={handleContextMenu}
     />
   );
 }

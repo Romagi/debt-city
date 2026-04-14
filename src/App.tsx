@@ -13,10 +13,12 @@ import CovenantModal from './modals/CovenantModal';
 import TermModal from './modals/TermModal';
 import AllocationModal from './modals/AllocationModal';
 import DocumentModal from './modals/DocumentModal';
+import DecorationPalette from './panels/DecorationPalette';
 import { mockPortfolio } from './api/mock-data';
 import { portfolioReducer } from './state/portfolio-reducer';
 import { buildCityState } from './city/utils';
-import type { ClickTarget, Borrower, Project, Tranche, Lender, Covenant } from './types/portfolio';
+import type { ClickTarget, Borrower, Project, Tranche, Lender, Covenant, CellType } from './types/portfolio';
+import type { PlacementMode } from './city/CityCanvas';
 
 // ─── Modal state ───
 
@@ -35,6 +37,7 @@ export default function App() {
   const [portfolio, dispatch] = useReducer(portfolioReducer, mockPortfolio);
   const [activeTarget, setActiveTarget] = useState<ClickTarget | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  const [placementMode, setPlacementMode] = useState<PlacementMode | null>(null);
 
   const cityState = useMemo(() => buildCityState(portfolio), [portfolio]);
 
@@ -62,6 +65,15 @@ export default function App() {
         onMoveStructure={(entityId, structureType, toCol, toRow, width, height) =>
           dispatch({ type: 'MOVE_STRUCTURE', payload: { entityId, structureType: structureType as any, toCol, toRow, width, height } })
         }
+        placementMode={placementMode}
+        onPlaceDecoration={(col, row, projectId) => {
+          if (placementMode?.deco) {
+            dispatch({ type: 'PLACE_DECORATION', payload: { decorationType: placementMode.deco, col, row, projectId } });
+          }
+        }}
+        onRemoveDecoration={(col, row) => {
+          dispatch({ type: 'REMOVE_DECORATION', payload: { col, row } });
+        }}
       />
 
       {/* Contextual panel based on what was clicked */}
@@ -97,6 +109,15 @@ export default function App() {
           onOpenModal={setModal}
         />
       )}
+
+      <DecorationPalette
+        selectedDeco={placementMode && !placementMode.eraser ? placementMode.deco : null}
+        eraserActive={placementMode?.eraser ?? false}
+        onSelect={(deco: CellType | null) => setPlacementMode(deco ? { deco, eraser: false } : null)}
+        onToggleEraser={() => setPlacementMode(prev =>
+          prev?.eraser ? null : { deco: 'tree_sm', eraser: true }
+        )}
+      />
 
       <PortfolioOverview portfolio={portfolio} />
 

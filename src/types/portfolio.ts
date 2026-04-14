@@ -327,10 +327,12 @@ export const GRID_SIZE = 60; // fits up to ~12 districts (4×3)
 export const ISO_TILE_W = 64; // pixel width of one iso tile
 export const ISO_TILE_H = 32; // pixel height of one iso tile
 export const DISTRICT_SIZE = 12; // 12×12 tiles per district
-export const DISTRICT_GAP = 2; // gap between districts (for roads)
+export const DISTRICT_GAP = 1; // gap between districts (for roads)
 export const DISTRICT_COLS = 4; // districts per row
 
-export type CellType = 'building' | 'townhall' | 'shop' | 'library' | 'tree_sm' | 'tree_lg' | 'road' | 'park' | 'bench' | 'fountain' | 'bush';
+export type CellType = 'building' | 'townhall' | 'shop' | 'library' | 'tree_sm' | 'tree_lg' | 'road' | 'road_2' | 'road_cross' | 'sidewalk' | 'park' | 'bench' | 'fountain' | 'bush';
+
+export const DECORATION_TYPES: Set<CellType> = new Set(['tree_sm', 'tree_lg', 'road', 'road_2', 'road_cross', 'sidewalk', 'park', 'bench', 'fountain', 'bush']);
 
 export interface CellContent {
   type: CellType;
@@ -366,14 +368,23 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   townhall: [3, 3],
   shop_kiosk: [2, 2],
   shop_store: [2, 2],
-  shop_mall: [4, 2],
+  shop_mall: [3, 3],
   library_sm: [2, 2],
   library_md: [2, 2],
   library_lg: [3, 3],
+  // Sprite-key aliases (drawSpriteOnGrid looks up by sprite key)
+  shop_lg: [3, 3],
+  road_straight_1: [1, 1],
+  road_straight_2: [1, 1],
+  road_cross: [1, 1],
+  road_turn: [1, 1],
+  tile_sidewalk: [1, 1],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],
   road: [1, 1],
+  road_2: [1, 1],
+  sidewalk: [1, 1],
   park: [2, 2],
   bench: [1, 1],
   fountain: [1, 1],

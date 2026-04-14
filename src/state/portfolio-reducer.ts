@@ -1,5 +1,5 @@
 import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money, DocumentDrive, CellType } from '../types/portfolio';
-import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace, getDistrictForProject, fitsInDistrict } from '../types/portfolio';
+import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace, getDistrictForProject, getDistrictAt, fitsInDistrict, STRUCTURE_SIZES, DECORATION_TYPES } from '../types/portfolio';
 
 // ─── Action types ───
 
@@ -31,7 +31,9 @@ type Action =
   | { type: 'ADD_DOCUMENT'; payload: { projectId: string; name: string; drive: DocumentDrive } }
   | { type: 'DELETE_DOCUMENT'; payload: { projectId: string; documentId: string } }
   | { type: 'MOVE_STRUCTURE'; payload: { entityId: string; structureType: CellType; toCol: number; toRow: number; width: number; height: number } }
-  | { type: 'SYNC_GRID'; payload: { grid: import('../types/portfolio').GridState } };
+  | { type: 'SYNC_GRID'; payload: { grid: import('../types/portfolio').GridState } }
+  | { type: 'PLACE_DECORATION'; payload: { decorationType: CellType; col: number; row: number; projectId: string } }
+  | { type: 'REMOVE_DECORATION'; payload: { col: number; row: number } };
 
 export type PortfolioAction = Action;
 
@@ -469,6 +471,35 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
         entityId,
         projectId: entityId,
       });
+      return { ...state, grid: newGrid };
+    }
+
+    // ── Decorations ──
+    case 'PLACE_DECORATION': {
+      const { decorationType, col, row, projectId } = action.payload;
+      const [w, h] = STRUCTURE_SIZES[decorationType] ?? [1, 1];
+      // If inside a district, must fit within it
+      const district = getDistrictAt(state.grid, col, row);
+      if (district && !fitsInDistrict(district, col, row, w, h)) return state;
+      if (!canPlace(state.grid, col, row, w, h)) return state;
+      const entityId = nextId('deco');
+      const newGrid = placeOnGrid(state.grid, col, row, w, h, {
+        type: decorationType,
+        entityId,
+        projectId: projectId || undefined,
+      });
+      return { ...state, grid: newGrid };
+    }
+    case 'REMOVE_DECORATION': {
+      const { col, row } = action.payload;
+      const cell = state.grid.cells[row]?.[col];
+      if (!cell) return state;
+      // Find origin cell
+      const originCol = cell.originCol ?? col;
+      const originRow = cell.originRow ?? row;
+      const origin = state.grid.cells[originRow]?.[originCol];
+      if (!origin || !DECORATION_TYPES.has(origin.type) || !origin.entityId) return state;
+      const newGrid = removeFromGrid(state.grid, origin.entityId, origin.type);
       return { ...state, grid: newGrid };
     }
 
