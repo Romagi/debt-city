@@ -14,10 +14,12 @@ import TermModal from './modals/TermModal';
 import AllocationModal from './modals/AllocationModal';
 import DocumentModal from './modals/DocumentModal';
 import DecorationPalette from './panels/DecorationPalette';
+import LandingScreen from './screens/LandingScreen';
 import { mockPortfolio } from './api/mock-data';
 import { portfolioReducer } from './state/portfolio-reducer';
 import { buildCityState } from './city/utils';
-import type { ClickTarget, Borrower, Project, Tranche, Lender, Covenant, CellType } from './types/portfolio';
+import { useAutoSave } from './storage/useAutoSave';
+import type { Portfolio, ClickTarget, Borrower, Project, Tranche, Lender, Covenant, CellType } from './types/portfolio';
 import type { PlacementMode } from './city/CityCanvas';
 
 // ─── Modal state ───
@@ -34,10 +36,31 @@ type ModalState =
   | { type: 'document'; projectId: string };
 
 export default function App() {
-  const [portfolio, dispatch] = useReducer(portfolioReducer, mockPortfolio);
+  const [session, setSession] = useState<{ slug: string; initial: Portfolio } | null>(null);
+
+  // Show landing screen if no active session
+  if (!session) {
+    return (
+      <LandingScreen
+        initialPortfolio={mockPortfolio}
+        onSessionStart={(slug, portfolio) => setSession({ slug, initial: portfolio })}
+      />
+    );
+  }
+
+  return <GameScreen slug={session.slug} initialPortfolio={session.initial} onQuit={() => setSession(null)} />;
+}
+
+// ─── Game screen (split to allow useReducer with dynamic initial state) ───
+
+function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialPortfolio: Portfolio; onQuit: () => void }) {
+  const [portfolio, dispatch] = useReducer(portfolioReducer, initialPortfolio);
   const [activeTarget, setActiveTarget] = useState<ClickTarget | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [placementMode, setPlacementMode] = useState<PlacementMode | null>(null);
+
+  // Auto-save to localStorage
+  const { status: saveStatus } = useAutoSave(slug, portfolio);
 
   const cityState = useMemo(() => buildCityState(portfolio), [portfolio]);
 
@@ -121,6 +144,17 @@ export default function App() {
 
       <PortfolioOverview portfolio={portfolio} />
 
+      {/* Save indicator + quit */}
+      <div style={styles.saveBar}>
+        <button style={styles.quitBtn} onClick={onQuit} title="Quitter la partie">
+          ← Quitter
+        </button>
+        <span style={styles.saveStatus}>
+          {saveStatus === 'saving' && '⏳ Sauvegarde...'}
+          {saveStatus === 'saved' && '💾 Sauvegardé'}
+        </span>
+      </div>
+
       {/* Floating action buttons */}
       <div style={styles.fab}>
         <button style={styles.fabBtn} onClick={() => setModal({ type: 'borrower' })}>+ Borrower</button>
@@ -145,4 +179,7 @@ const styles: Record<string, React.CSSProperties> = {
   fab: { position: 'absolute', bottom: 64, left: 20, display: 'flex', gap: 8, zIndex: 10 },
   fabBtn: { padding: '8px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#CCC', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' },
   fabBtnPrimary: { background: 'rgba(74,144,217,0.3)', borderColor: 'rgba(74,144,217,0.5)', color: '#6AB0F0' },
+  saveBar: { position: 'absolute', top: 16, right: 16, display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 },
+  saveStatus: { color: '#667', fontFamily: 'monospace', fontSize: 11 },
+  quitBtn: { padding: '6px 14px', background: 'rgba(255,255,255,0.06)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.1)', borderRadius: 8, color: '#999', fontFamily: 'monospace', fontSize: 11, fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' },
 };
