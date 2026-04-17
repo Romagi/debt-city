@@ -103,7 +103,13 @@ export default function LandingScreen({ initialPortfolio, onSessionStart }: Prop
                 ...styles.menuBtn,
                 ...(sessions.length === 0 ? styles.menuBtnDisabled : {}),
               }}
-              onClick={() => sessions.length > 0 && setMode('resume')}
+              onClick={() => {
+                if (sessions.length > 0) {
+                  setMode('resume');
+                  // Auto-select first (most recent) session
+                  setSelectedSlug(sessions[0].slug);
+                }
+              }}
               disabled={sessions.length === 0}
             >
               <span style={styles.menuIcon}>🔑</span>
