@@ -64,12 +64,14 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
 
   const cityState = useMemo(() => buildCityState(portfolio), [portfolio]);
 
-  // Sync grid back to portfolio on first render (so MOVE_STRUCTURE has districts)
+  // Sync grid when buildCityState produces new districts (initial render + new deals)
+  const cityDistrictCount = cityState.grid.districts.length;
+  const portfolioDistrictCount = portfolio.grid.districts.length;
   useEffect(() => {
-    if (portfolio.grid.districts.length === 0 && cityState.grid.districts.length > 0) {
+    if (cityDistrictCount > portfolioDistrictCount) {
       dispatch({ type: 'SYNC_GRID', payload: { grid: cityState.grid } });
     }
-  }, [cityState.grid, portfolio.grid.districts.length]);
+  }, [cityDistrictCount, portfolioDistrictCount, cityState.grid]);
 
   // Keep activeTarget in sync with portfolio changes (project data may have changed)
   const syncedTarget = useMemo(() => {

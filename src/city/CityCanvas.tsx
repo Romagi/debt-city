@@ -60,7 +60,7 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   building_sm: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
   building_md: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
   building_lg: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
-  building_xl: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
+  building_xl: { baseRatio: 1.0, yOff: 1.0, xOff: 0 },  // new clean XL sprite, 644×1120, base fills full width
   townhall:    { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
   shop_sm:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
   shop_md:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },

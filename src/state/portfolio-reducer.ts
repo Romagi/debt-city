@@ -450,9 +450,26 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
 
     // ── Grid ──
     case 'SYNC_GRID': {
-      // Only sync if portfolio grid has no districts yet (first render)
-      if (state.grid.districts.length === 0 && action.payload.grid.districts.length > 0) {
-        return { ...state, grid: action.payload.grid };
+      const incoming = action.payload.grid;
+      // Sync when new districts or structures appear (new deals, initial render)
+      if (incoming.districts.length > state.grid.districts.length) {
+        // Merge: keep existing cell modifications (moved structures, decorations) but add new districts & their structures
+        const newCells = state.grid.cells.map((row, r) =>
+          row.map((cell, c) => {
+            // Keep existing user modifications (moves, decorations)
+            if (cell !== null) return cell;
+            // Fill in new structures from buildCityState
+            return incoming.cells[r]?.[c] ?? null;
+          })
+        );
+        return {
+          ...state,
+          grid: {
+            ...state.grid,
+            cells: newCells,
+            districts: incoming.districts,
+          },
+        };
       }
       return state;
     }
