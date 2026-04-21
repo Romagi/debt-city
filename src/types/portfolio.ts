@@ -325,7 +325,7 @@ export interface CityState {
 
 export const GRID_SIZE = 60; // fits up to ~12 districts (4×3)
 export const ISO_TILE_W = 64; // pixel width of one iso tile
-export const ISO_TILE_H = 37; // pixel height of one iso tile (30° isometric angle)
+export const ISO_TILE_H = 38; // pixel height of one iso tile (30.5° isometric angle)
 export const DISTRICT_SIZE = 12; // 12×12 tiles per district
 export const DISTRICT_GAP = 1; // gap between districts (for roads)
 export const DISTRICT_COLS = 4; // districts per row
