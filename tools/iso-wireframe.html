@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Debt City — ISO Wireframe Reference</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background: #0f172a;
+      color: #e2e8f0;
+      font-family: system-ui, sans-serif;
+      padding: 30px;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    h1 { color: #38bdf8; margin: 0; font-size: 22px; }
+    p  { color: #94a3b8; margin: 0; font-size: 14px; }
+    canvas {
+      width: 600px;
+      height: 600px;
+      border-radius: 12px;
+      background: repeating-conic-gradient(#1e293b 0% 25%, #0f172a 0% 50%) 0 0 / 20px 20px;
+    }
+    button {
+      padding: 12px 28px;
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    button:hover { background: #7dd3fc; }
+  </style>
+</head>
+<body>
+  <h1>🏗️ ISO Building Wireframe — 3×3 footprint</h1>
+  <p>Upload this image to Gemini as the GEOMETRY REFERENCE for any 3×3 building.</p>
+  <canvas id="cv" width="2048" height="2048"></canvas>
+  <button onclick="dl()">⬇ Download iso-wireframe-3x3.png</button>
+
+  <script>
+    const CV  = document.getElementById('cv');
+    const ctx = CV.getContext('2d');
+    const CS  = 2048;
+
+    // ── ISO geometry (2:1 pixel ratio, 3×3 footprint) ──────────────────
+    // Same formula as the game: x = (col-row)*32, y = (col+row)*16
+    // Scaled ×8 for 2048 canvas: x = (col-row)*256, y = (col+row)*128
+    //
+    // 3×3 footprint corners (centered on canvas):
+    //   Back  (0,0) → tx=1024, ty=640
+    //   Right (3,0) → tx+768, ty+384
+    //   Front (3,3) → tx,     ty+768   ← NEAREST TO VIEWER
+    //   Left  (0,3) → tx-768, ty+384
+
+    const TX = 1024, TY = 500;
+
+    function iso(col, row) {
+      return { x: TX + (col - row) * 256, y: TY + (col + row) * 128 };
+    }
+
+    // Base diamond (3×3)
+    const bT = iso(0, 0); // back
+    const bR = iso(3, 0); // right
+    const bF = iso(3, 3); // FRONT — nearest to viewer
+    const bL = iso(0, 3); // left
+
+    // Wall height (vertical, in px)
+    const WH = 520;
+
+    // Top diamond = base shifted up by WH
+    const tT = { x: bT.x, y: bT.y - WH };
+    const tR = { x: bR.x, y: bR.y - WH };
+    const tF = { x: bF.x, y: bF.y - WH };
+    const tL = { x: bL.x, y: bL.y - WH };
+
+    // ── Drawing helpers ─────────────────────────────────────────────────
+    function line(a, b, color, width = 6, dash = []) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = width;
+      ctx.setLineDash(dash);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function face(pts, fill, stroke, strokeW = 5) {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      pts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.closePath();
+      ctx.fillStyle   = fill;
+      ctx.fill();
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth   = strokeW;
+      ctx.stroke();
+    }
+
+    function dot(p, color, r = 14) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    function label(text, x, y, color, size = 42, align = 'center') {
+      ctx.font      = `bold ${size}px system-ui`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      // subtle shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur  = 12;
+      ctx.fillText(text, x, y);
+      ctx.shadowBlur = 0;
+    }
+
+    function arrowLine(a, b, color, width = 6) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.sqrt(dx*dx + dy*dy);
+      const ux = dx/len, uy = dy/len;
+      const arrowSize = 24;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = width;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x - ux*arrowSize, b.y - uy*arrowSize);
+      ctx.stroke();
+
+      // arrowhead
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - ux*arrowSize - uy*arrowSize*0.6, b.y - uy*arrowSize + ux*arrowSize*0.6);
+      ctx.lineTo(b.x - ux*arrowSize + uy*arrowSize*0.6, b.y - uy*arrowSize - ux*arrowSize*0.6);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // ── Clear ───────────────────────────────────────────────────────────
+    ctx.clearRect(0, 0, CS, CS);
+
+    // ── 1. Hidden edges (dashed, dim) ───────────────────────────────────
+    const DIM  = 'rgba(148,163,184,0.35)';
+    line(bT, bR, DIM, 4, [24, 18]);
+    line(bT, bL, DIM, 4, [24, 18]);
+    line(bT, tT, DIM, 4, [24, 18]);
+    line(tT, tR, DIM, 4, [24, 18]);
+    line(tT, tL, DIM, 4, [24, 18]);
+
+    // ── 2. Visible base edges ────────────────────────────────────────────
+    line(bF, bR, '#cbd5e1', 5);
+    line(bF, bL, '#cbd5e1', 5);
+
+    // ── 3. Faces (fill then stroke) ─────────────────────────────────────
+    // Left face — blue
+    face([bL, bF, tF, tL], 'rgba(56,189,248,0.10)', 'rgba(56,189,248,0.7)', 6);
+    // Right face — amber
+    face([bR, bF, tF, tR], 'rgba(251,191,36,0.10)', 'rgba(251,191,36,0.7)', 6);
+    // Top face — green
+    face([tT, tR, tF, tL], 'rgba(52,211,153,0.18)', 'rgba(52,211,153,0.8)', 6);
+
+    // ── 4. Lateral vertical edges ────────────────────────────────────────
+    line(bR, tR, 'rgba(251,191,36,0.9)', 6);
+    line(bL, tL, 'rgba(56,189,248,0.9)', 6);
+
+    // ── 5. FRONT CORNER EDGE (hero element) ─────────────────────────────
+    line(bF, tF, '#f43f5e', 14);
+
+    // ── 6. Corner dots ───────────────────────────────────────────────────
+    dot(bT, '#64748b', 10);
+    dot(bR, '#fbbf24', 16);
+    dot(bL, '#38bdf8', 16);
+    dot(tT, '#64748b', 10);
+    dot(tR, '#fbbf24', 14);
+    dot(tL, '#38bdf8', 14);
+    dot(bF, '#f43f5e', 22); // front base — biggest dot
+    dot(tF, '#f43f5e', 22); // front top
+
+    // ── 7. Slope annotations (left face top edge) ────────────────────────
+    // Show the 2:1 ratio on the left wall base edge (bL → bF)
+    const midLF = { x: (bL.x + bF.x)/2, y: (bL.y + bF.y)/2 };
+    arrowLine(
+      { x: midLF.x - 60, y: midLF.y - 80 },
+      { x: midLF.x + 30, y: midLF.y - 20 },
+      '#38bdf8', 4
+    );
+    label('2px →  +  1px ↓', midLF.x - 100, midLF.y - 130, '#38bdf8', 36);
+    label('(26.57° slope)', midLF.x - 100, midLF.y - 82, 'rgba(56,189,248,0.7)', 30);
+
+    // Right face top edge (bR → bF)
+    const midRF = { x: (bR.x + bF.x)/2, y: (bR.y + bF.y)/2 };
+    label('← 2px  +  1px ↓', midRF.x + 100, midRF.y - 130, '#fbbf24', 36);
+    label('(26.57° slope)', midRF.x + 100, midRF.y - 82, 'rgba(251,191,36,0.7)', 30);
+
+    // ── 8. Face labels ───────────────────────────────────────────────────
+    // Left face center
+    const lcx = (bL.x + bF.x + tF.x + tL.x) / 4;
+    const lcy = (bL.y + bF.y + tF.y + tL.y) / 4;
+    label('LEFT', lcx - 80, lcy - 20, '#38bdf8', 52);
+    label('FACE', lcx - 80, lcy + 44, '#38bdf8', 52);
+
+    // Right face center
+    const rcx = (bR.x + bF.x + tF.x + tR.x) / 4;
+    const rcy = (bR.y + bF.y + tF.y + tR.y) / 4;
+    label('RIGHT', rcx + 80, rcy - 20, '#fbbf24', 52);
+    label('FACE', rcx + 80, rcy + 44, '#fbbf24', 52);
+
+    // Top face
+    const tcx = (tT.x + tR.x + tF.x + tL.x) / 4;
+    const tcy = (tT.y + tR.y + tF.y + tL.y) / 4;
+    label('TOP FACE', tcx, tcy, '#34d399', 48);
+    label('(roof base — 2:1 diamond)', tcx, tcy + 58, 'rgba(52,211,153,0.7)', 32);
+
+    // ── 9. Front corner annotation ────────────────────────────────────────
+    const fcMid = { x: bF.x, y: (bF.y + tF.y) / 2 };
+    arrowLine(
+      { x: fcMid.x + 260, y: fcMid.y },
+      { x: fcMid.x + 28, y: fcMid.y },
+      '#f43f5e', 5
+    );
+    label('FRONT CORNER', fcMid.x + 380, fcMid.y - 26, '#f43f5e', 44);
+    label('→ ENTRANCE / DOOR HERE', fcMid.x + 380, fcMid.y + 30, 'rgba(244,63,94,0.75)', 32);
+    label('PERFECTLY VERTICAL (90°)', fcMid.x + 380, fcMid.y + 80, 'rgba(244,63,94,0.6)', 28);
+
+    // ── 10. Viewer direction ──────────────────────────────────────────────
+    label('👁  VIEWER', bF.x, bF.y + 110, 'rgba(255,255,255,0.5)', 40);
+
+    // ── 11. Title / rule summary ──────────────────────────────────────────
+    ctx.font = 'bold 48px system-ui';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 16;
+    ctx.fillText('2:1 DIMETRIC ISOMETRIC — 3×3 footprint', CS/2, 56);
+    ctx.shadowBlur = 0;
+
+    // ── Download ──────────────────────────────────────────────────────────
+    function dl() {
+      const a  = document.createElement('a');
+      a.download = 'iso-wireframe-3x3.png';
+      a.href = CV.toDataURL('image/png');
+      a.click();
+    }
+  </script>
+</body>
+</html>
