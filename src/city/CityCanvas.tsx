@@ -50,30 +50,43 @@ const EMPTY_LOT_W = 24;
 const EMPTY_LOT_H = 10;
 
 /** Per-sprite rendering calibration.
- *  All sprites are 2048×2048, generated at 6× scale (ISO_TILE_W=64 × 6).
- *  baseRatio: fraction of sprite width occupied by the iso base diamond.
- *    N=3 footprint → 2×3×192 / 2048 = 0.5625
- *    N=2 footprint → 2×2×192 / 2048 = 0.375
- *    N=1 footprint → 2×1×192 / 2048 = 0.1875
- *  yOff: (2048 − FRONT_Y) / (scale × ISO_TILE_H) = 128 / (6 × 38) ≈ 0.56
- *  xOff: 0 (all sprites are horizontally centred)  */
+ *  All sprites are 2048×2048, generated at 6× scale, anchored at the CENTRE of
+ *  the footprint diamond (gridToScreen(col + N/2, row + N/2)).
+ *
+ *  baseRatio: fraction of sprite width = iso base width / CS
+ *    N=3 → 2×3×192 / 2048 = 0.5625
+ *    N=2 → 2×2×192 / 2048 = 0.375
+ *    N=1 → 2×1×192 / 2048 = 0.1875
+ *
+ *  yOff formula (derived from sprite geometry):
+ *    In the sprite, bL/bR corners (front face foot) sit at y = FRONT_Y - N×DV = 1920 - N×114.
+ *    These should appear at the game anchor (y = 0 relative to anchor).
+ *    Setting top_sprite + pixel_offset = 0:
+ *      38×yOff = (128 + N×114) / 6   →   yOff = (128 + N×114) / 228
+ *    N=3 → (128 + 342) / 228 = 470/228 ≈ 2.06
+ *    N=2 → (128 + 228) / 228 = 356/228 ≈ 1.56
+ *    N=1 → (128 + 114) / 228 = 242/228 ≈ 1.06                         */
 const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: number }> = {
   // ── 3×3 buildings (offices + civic + mall + library LG) ─────────
-  building_xs: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  building_sm: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  building_md: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  building_lg: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  building_xl: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  townhall:    { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  shop_lg:     { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  library_lg:  { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  building_xs: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  building_sm: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  building_md: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  building_lg: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  building_xl: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  townhall:    { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  shop_lg:     { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  library_lg:  { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
   // ── 2×2 buildings (shops + library SM/MD + park) ─────────────────
-  shop_sm:     { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
-  shop_md:     { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
-  library_sm:  { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
-  library_md:  { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
-  park:        { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
+  shop_sm:     { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
+  shop_md:     { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
+  library_sm:  { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
+  library_md:  { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
+  park:        { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
   // ── 1×1 decorations + tiles + roads ──────────────────────────────
+  // N=1 exception: the decoration anchor gridToScreen(col+0.5, row+0.5) is 19 px
+  // BELOW the underlying tile center gridToScreen(col, row). bL/bR must appear
+  // 19 px above the anchor (offset -19) to align with the tile surface.
+  // → yOff = 0.56  (bL/bR at anchor − 19 = tile center)
   tree_sm:         { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
   tree_lg:         { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
   bush:            { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
@@ -86,9 +99,18 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   road_turn:       { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
   tile_sidewalk:   { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
   // ── 3×3 chantier ─────────────────────────────────────────────────
-  empty_lot:       { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
-  crane:           { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  empty_lot:       { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  crane:           { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
 };
+
+/** Crop constants for 1×1 tile sprites (2048×2048, 6× scale, FRONT_Y=1920).
+ *  The tile diamond sits at x:[832–1216], y:[1692–1920] in the sprite canvas. */
+const SPRITE_DU  = ISO_TILE_W * 3;                // 192  (half-diamond width at 6×)
+const SPRITE_DV  = ISO_TILE_H * 3;                // 114  (half-diamond height at 6×)
+const TILE1_SX   = 1024 - SPRITE_DU;              // 832
+const TILE1_SY   = 1920 - 2 * SPRITE_DV;          // 1692
+const TILE1_SW   = 2 * SPRITE_DU;                 // 384
+const TILE1_SH   = 2 * SPRITE_DV;                 // 228
 
 // ─── Sprite system ───
 
@@ -296,7 +318,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         if (cell && DECORATION_TYPES.has(cell.type)) continue; // drawn by drawDecorations
         if (concreteSprite) {
           const { x, y } = gridToScreen(col, row);
-          ctx.drawImage(concreteSprite, x - tw / 2, y - th / 2, tw, th);
+          ctx.drawImage(concreteSprite, TILE1_SX, TILE1_SY, TILE1_SW, TILE1_SH, x - tw / 2, y - th / 2, tw, th);
         } else {
           drawTileDiamond(ctx, col, row, 'rgba(180,170,160,0.08)', 'rgba(180,170,160,0.12)', 0.5);
         }
@@ -321,7 +343,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         if (concreteSprite) {
           const { x, y } = gridToScreen(col, row);
           // Flat tile: 2:1 ratio, no thickness. Align diamond center to grid point.
-          ctx.drawImage(concreteSprite, x - tw / 2, y - th / 2, tw, th);
+          ctx.drawImage(concreteSprite, TILE1_SX, TILE1_SY, TILE1_SW, TILE1_SH, x - tw / 2, y - th / 2, tw, th);
         } else {
           drawTileDiamond(ctx, col, row, 'rgba(180,170,160,0.12)', 'rgba(180,170,160,0.2)', 0.8);
         }
@@ -379,7 +401,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
             // Empty cell inside district = grass
             if (grassSprite) {
               const { x, y } = gridToScreen(col, row);
-              ctx.drawImage(grassSprite, x - tw / 2, y - th / 2, tw, th);
+              ctx.drawImage(grassSprite, TILE1_SX, TILE1_SY, TILE1_SW, TILE1_SH, x - tw / 2, y - th / 2, tw, th);
             } else {
               drawTileDiamond(ctx, col, row, 'rgba(90, 160, 60, 0.1)', null, 0);
             }
