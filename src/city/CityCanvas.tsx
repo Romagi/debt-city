@@ -49,37 +49,45 @@ const LIBRARY_SIZES: Record<string, { lw: number; lh: number }> = {
 const EMPTY_LOT_W = 24;
 const EMPTY_LOT_H = 10;
 
-/** Per-sprite rendering config: scale relative to footprint, and Y anchor offset */
-/** Per-sprite rendering calibration:
- *  baseRatio: what fraction of sprite width is the iso base (the 2 visible edges). 1.0 = full width.
- *  yOff: vertical anchor in ISO_TILE_H units (higher = base sits lower)
- *  xOff: horizontal shift in ISO_TILE_W units (for off-center sprites) */
+/** Per-sprite rendering calibration.
+ *  All sprites are 2048×2048, generated at 6× scale (ISO_TILE_W=64 × 6).
+ *  baseRatio: fraction of sprite width occupied by the iso base diamond.
+ *    N=3 footprint → 2×3×192 / 2048 = 0.5625
+ *    N=2 footprint → 2×2×192 / 2048 = 0.375
+ *    N=1 footprint → 2×1×192 / 2048 = 0.1875
+ *  yOff: (2048 − FRONT_Y) / (scale × ISO_TILE_H) = 128 / (6 × 38) ≈ 0.56
+ *  xOff: 0 (all sprites are horizontally centred)  */
 const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: number }> = {
-  // These were good — don't touch
-  building_xs: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
-  building_sm: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
-  building_md: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
-  building_lg: { baseRatio: 1.0, yOff: 1.2, xOff: 0 },
-  building_xl: { baseRatio: 1.0, yOff: 1.0, xOff: 0 },  // new clean XL sprite, 644×1120, base fills full width
-  townhall:    { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
-  shop_sm:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
-  shop_md:     { baseRatio: 1.0, yOff: 1.0, xOff: 0 },
-  // Mall: 3x3 footprint
-  shop_lg:     { baseRatio: 0.88, yOff: 1.55, xOff: 0 },
-  // These were good — don't touch
-  library_sm:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
-  library_md:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
-  library_lg:  { baseRatio: 1.0, yOff: 0.6, xOff: 0 },
-  // Decorations
-  tree_sm:       { baseRatio: 1.0, yOff: 0.3, xOff: 0 },
-  tree_lg:       { baseRatio: 1.0, yOff: 0.3, xOff: 0 },
-  park:          { baseRatio: 1.0, yOff: 0.8, xOff: 0 },
-  road_straight_1: { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
-  road_straight_2: { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
-  road_cross:      { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
-  road_turn:       { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
-  tile_sidewalk:   { baseRatio: 1.0, yOff: 0.0, xOff: 0 },
-  bush:          { baseRatio: 1.0, yOff: 0.5, xOff: 0 },
+  // ── 3×3 buildings (offices + civic + mall + library LG) ─────────
+  building_xs: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  building_sm: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  building_md: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  building_lg: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  building_xl: { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  townhall:    { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  shop_lg:     { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  library_lg:  { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  // ── 2×2 buildings (shops + library SM/MD + park) ─────────────────
+  shop_sm:     { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
+  shop_md:     { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
+  library_sm:  { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
+  library_md:  { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
+  park:        { baseRatio: 0.375,  yOff: 0.56, xOff: 0 },
+  // ── 1×1 decorations + tiles + roads ──────────────────────────────
+  tree_sm:         { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tree_lg:         { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  bush:            { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  ground:          { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tile_concrete:   { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tile_grass:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  road_straight_1: { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  road_straight_2: { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  road_cross:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  road_turn:       { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tile_sidewalk:   { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  // ── 3×3 chantier ─────────────────────────────────────────────────
+  empty_lot:       { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
+  crane:           { baseRatio: 0.5625, yOff: 0.56, xOff: 0 },
 };
 
 // ─── Sprite system ───
@@ -140,10 +148,14 @@ function getSprite(key: SpriteKey): HTMLImageElement | undefined {
 }
 
 function getBuildingSpriteKey(height: number): SpriteKey {
-  if (height > 140) return 'building_xl';
-  if (height > 110) return 'building_lg';
-  if (height > 80) return 'building_md';
-  if (height > 55) return 'building_sm';
+  // Thresholds aligned with getBuildingSizeKey() in utils.ts:
+  // xl > 500M€, lg > 300M€, md > 150M€, sm > 50M€, xs ≤ 50M€
+  // height = 50 + (amount / 700M) * 130
+  // → xl > 142.8, lg > 105.7, md > 77.8, sm > 59.3, xs ≤ 59.3
+  if (height > 142) return 'building_xl';
+  if (height > 105) return 'building_lg';
+  if (height > 77)  return 'building_md';
+  if (height > 59)  return 'building_sm';
   return 'building_xs';
 }
 

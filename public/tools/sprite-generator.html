@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Debt City — Full Sprite Generator</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background: #0f172a; color: #e2e8f0;
+      font-family: system-ui, sans-serif;
+      padding: 28px; margin: 0;
+    }
+    h1 { color: #38bdf8; margin: 0 0 4px; font-size: 20px; }
+    .sub { color: #94a3b8; font-size: 13px; margin-bottom: 28px; }
+    .category { margin-bottom: 36px; }
+    .cat-title {
+      color: #fbbf24; font-size: 14px; font-weight: 700;
+      margin-bottom: 12px; padding-bottom: 6px;
+      border-bottom: 1px solid #1e293b;
+      letter-spacing: 0.3px;
+    }
+    .grid { display: flex; gap: 14px; flex-wrap: wrap; }
+    .card {
+      background: #1e293b; border-radius: 10px;
+      padding: 12px; text-align: center;
+    }
+    .card h3 {
+      color: #fbbf24; margin: 0 0 8px;
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .preview {
+      width: 160px; height: 160px;
+      border-radius: 6px; display: block; margin: 0 auto 10px;
+      background: repeating-conic-gradient(#283040 0% 25%, #1a2030 0% 50%) 0 0 / 12px 12px;
+      image-rendering: pixelated;
+    }
+    button {
+      background: #38bdf8; color: #0f172a; border: none;
+      border-radius: 5px; padding: 7px 10px; font-weight: 700;
+      cursor: pointer; font-size: 11px; width: 100%;
+    }
+    button:hover { background: #7dd3fc; }
+  </style>
+</head>
+<body>
+  <h1>🏙️ Debt City — Full Sprite Generator</h1>
+  <p class="sub">25 sprites · 30.5° isometric · fond transparent · prêts pour /public/sprites/</p>
+  <div id="root"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  CONSTANTS  (match game: ISO_TILE_W=64, ISO_TILE_H=38, scale×6)
+// ═══════════════════════════════════════════════════════════════
+const CS       = 2048;   // canvas size px
+const DU       = 192;    // half tile width  (64×6/2)
+const DV       = 114;    // half tile height (38×6/2)
+const CX       = 1024;   // horizontal centre
+const FRONT_Y  = 1920;   // y of front corner (all sprites anchored here)
+
+// ═══════════════════════════════════════════════════════════════
+//  COLOR UTILS
+// ═══════════════════════════════════════════════════════════════
+function hexRgb(h) { return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+function rgbHex(r,g,b) { return '#'+[r,g,b].map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
+function darken(h,a)  { const [r,g,b]=hexRgb(h); return rgbHex(r*(1-a),g*(1-a),b*(1-a)); }
+function lighten(h,a) { const [r,g,b]=hexRgb(h); return rgbHex(r+(255-r)*a,g+(255-g)*a,b+(255-b)*a); }
+function alpha(h,a)   { const [r,g,b]=hexRgb(h); return `rgba(${r},${g},${b},${a})`; }
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAWING PRIMITIVES
+// ═══════════════════════════════════════════════════════════════
+function poly(ctx, pts, fill, stroke, sw=0) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  pts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.closePath();
+  if (fill)             { ctx.fillStyle=fill; ctx.fill(); }
+  if (stroke && sw > 0) { ctx.strokeStyle=stroke; ctx.lineWidth=sw; ctx.stroke(); }
+}
+function seg(ctx, a, b, color, w) {
+  ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+  ctx.strokeStyle=color; ctx.lineWidth=w; ctx.stroke();
+}
+function facePoint(origin, uVec, vVec, u, v) {
+  return { x: origin.x + uVec.x*u + vVec.x*v, y: origin.y + uVec.y*u + vVec.y*v };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ISO HELPERS
+// ═══════════════════════════════════════════════════════════════
+// isoP(col, row, ty)  — returns screen pixel for an iso grid point
+// ty = FRONT_Y - 2*N*DV  (puts the front corner at FRONT_Y)
+function isoP(col, row, ty) {
+  return { x: CX + (col - row)*DU, y: ty + (col + row)*DV };
+}
+function getTY(N) { return FRONT_Y - 2*N*DV; }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  BUILDING / STRUCTURE RENDERER  (3×3 or 2×2)
+// ═══════════════════════════════════════════════════════════════
+function renderBuilding(cv, cfg) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const { N, wallH, wall, roof, win, trim, floors, winCols, decor } = cfg;
+  const ty = getTY(N);
+
+  const bT = isoP(0,0,ty), bR = isoP(N,0,ty), bF = isoP(N,N,ty), bL = isoP(0,N,ty);
+  const tT = {x:bT.x, y:bT.y-wallH}, tR = {x:bR.x, y:bR.y-wallH};
+  const tF = {x:bF.x, y:bF.y-wallH}, tL = {x:bL.x, y:bL.y-wallH};
+
+  // Parapet (small raised wall at roof edge)
+  const pH = 22;
+  const pT={x:tT.x,y:tT.y-pH}, pR={x:tR.x,y:tR.y-pH};
+  const pF={x:tF.x,y:tF.y-pH}, pL={x:tL.x,y:tL.y-pH};
+
+  // ── 0. Drop shadow ─────────────────────────────────────────────
+  const sg = ctx.createRadialGradient(CX,bF.y,8, CX,bF.y, N*DU*0.94);
+  sg.addColorStop(0,'rgba(0,0,0,0.45)');
+  sg.addColorStop(0.45,'rgba(0,0,0,0.18)');
+  sg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(CX, bF.y-12, N*DU*0.9, N*DV*0.4, 0, 0, Math.PI*2);
+  ctx.fillStyle=sg; ctx.fill();
+  ctx.restore();
+
+  // ── 1. Ground slab ──────────────────────────────────────────────
+  const slabG = ctx.createLinearGradient(bT.x,bT.y,bF.x,bF.y);
+  slabG.addColorStop(0,'#D4C4AA'); slabG.addColorStop(1,'#BCA888');
+  poly(ctx, [bT,bR,bF,bL], slabG, '#8B7B6B', 3);
+  ctx.strokeStyle='rgba(120,100,80,0.3)'; ctx.lineWidth=2;
+  for (let i=1; i<N; i++) {
+    seg(ctx, isoP(i,0,ty), isoP(i,N,ty), 'rgba(120,100,80,0.3)', 2);
+    seg(ctx, isoP(0,i,ty), isoP(N,i,ty), 'rgba(120,100,80,0.3)', 2);
+  }
+
+  // ── 2. Left face (darker) ───────────────────────────────────────
+  const lgL = ctx.createLinearGradient(bL.x,bL.y,tL.x,tL.y);
+  lgL.addColorStop(0, darken(wall,0.42));
+  lgL.addColorStop(0.25, darken(wall,0.30));
+  lgL.addColorStop(0.7, darken(wall,0.20));
+  lgL.addColorStop(1, darken(wall,0.12));
+  poly(ctx, [bL,bF,tF,tL], lgL, null);
+  // Subtle vertical texture bands
+  for (let i=1; i<N; i++) {
+    const pa={x:bL.x+i*(bF.x-bL.x)/N, y:bL.y+i*(bF.y-bL.y)/N};
+    const pb={x:tL.x+i*(tF.x-tL.x)/N, y:tL.y+i*(tF.y-tL.y)/N};
+    seg(ctx, pa, pb, alpha(darken(wall,0.15),0.25), 1.5);
+  }
+
+  // ── 3. Right face (lighter) ─────────────────────────────────────
+  const lgR = ctx.createLinearGradient(bR.x,bR.y,tR.x,tR.y);
+  lgR.addColorStop(0, darken(wall,0.14));
+  lgR.addColorStop(0.3, wall);
+  lgR.addColorStop(0.75, lighten(wall,0.10));
+  lgR.addColorStop(1, lighten(wall,0.18));
+  poly(ctx, [bR,bF,tF,tR], lgR, null);
+  for (let i=1; i<N; i++) {
+    const pa={x:bR.x+i*(bF.x-bR.x)/N, y:bR.y+i*(bF.y-bR.y)/N};
+    const pb={x:tR.x+i*(tF.x-tR.x)/N, y:tR.y+i*(tF.y-tR.y)/N};
+    seg(ctx, pa, pb, alpha(lighten(wall,0.15),0.25), 1.5);
+  }
+
+  // ── 3b. Wall textures ──────────────────────────────────────────
+  if (cfg.texture) {
+    drawFaceTexture(ctx, bL, bF, wallH, cfg.texture, darken(wall,0.27), floors);
+    drawFaceTexture(ctx, bR, bF, wallH, cfg.texture, wall, floors);
+  }
+  // ── 3c. Accent belt (optional) ─────────────────────────────────
+  if (cfg.belt) {
+    const bh = cfg.belt * wallH;
+    const bc = cfg.beltColor || darken(trim, 0.05);
+    seg(ctx,{x:bL.x,y:bL.y-bh},{x:bF.x,y:bF.y-bh}, bc, 18);
+    seg(ctx,{x:bL.x,y:bL.y-bh-12},{x:bF.x,y:bF.y-bh-12}, lighten(bc,0.3), 6);
+    seg(ctx,{x:bR.x,y:bR.y-bh},{x:bF.x,y:bF.y-bh}, lighten(bc,0.2), 18);
+    seg(ctx,{x:bR.x,y:bR.y-bh-12},{x:bF.x,y:bF.y-bh-12}, lighten(bc,0.4), 6);
+  }
+
+  // ── 4. Stone base / plinth (ground floor) ──────────────────────
+  const gfH = wallH / floors;
+  const stone = '#C0AD92';
+  // Left face plinth
+  const pgL = ctx.createLinearGradient(bL.x,bL.y, bL.x,bL.y-gfH);
+  pgL.addColorStop(0, darken(stone,0.30)); pgL.addColorStop(1, darken(stone,0.14));
+  poly(ctx,[bL,bF,{x:bF.x,y:bF.y-gfH},{x:bL.x,y:bL.y-gfH}], pgL, null);
+  // Right face plinth
+  const pgR = ctx.createLinearGradient(bR.x,bR.y, bR.x,bR.y-gfH);
+  pgR.addColorStop(0, darken(stone,0.12)); pgR.addColorStop(1, lighten(stone,0.06));
+  poly(ctx,[bR,bF,{x:bF.x,y:bF.y-gfH},{x:bR.x,y:bR.y-gfH}], pgR, null);
+  // Plinth top ledge (cornice at floor 1)
+  seg(ctx,{x:bL.x,y:bL.y-gfH},{x:bF.x,y:bF.y-gfH}, darken(stone,0.38), 7);
+  seg(ctx,{x:bR.x,y:bR.y-gfH},{x:bF.x,y:bF.y-gfH}, darken(stone,0.22), 6);
+  seg(ctx,{x:bL.x,y:bL.y-gfH-5},{x:bF.x,y:bF.y-gfH-5}, lighten(stone,0.28), 4);
+  seg(ctx,{x:bR.x,y:bR.y-gfH-5},{x:bF.x,y:bF.y-gfH-5}, lighten(stone,0.35), 3);
+
+  // ── 5. Floor ledge bands (floor 2 upward) ──────────────────────
+  for (let i=2; i<floors; i++) {
+    const h = i * wallH / floors;
+    // Left face band (dark groove + light ledge top)
+    seg(ctx,{x:bL.x,y:bL.y-h},{x:bF.x,y:bF.y-h}, darken(wall,0.36), 8);
+    seg(ctx,{x:bL.x,y:bL.y-h-5},{x:bF.x,y:bF.y-h-5}, lighten(wall,0.25), 4);
+    // Right face band
+    seg(ctx,{x:bR.x,y:bR.y-h},{x:bF.x,y:bF.y-h}, darken(wall,0.22), 7);
+    seg(ctx,{x:bR.x,y:bR.y-h-5},{x:bF.x,y:bF.y-h-5}, lighten(wall,0.30), 4);
+  }
+
+  // ── 6 & 7. Windows ─────────────────────────────────────────────
+  const leftU  = {x:(bF.x-bL.x)/winCols, y:(bF.y-bL.y)/winCols};
+  const leftV  = {x:0, y:-wallH/floors};
+  drawWindows(ctx, bL, leftU, leftV, floors, winCols, win, darken(wall,0.48));
+  const rightU = {x:(bF.x-bR.x)/winCols, y:(bF.y-bR.y)/winCols};
+  const rightV = {x:0, y:-wallH/floors};
+  drawWindows(ctx, bR, rightU, rightV, floors, winCols, win, darken(wall,0.22));
+
+  // ── 8. Door ────────────────────────────────────────────────────
+  drawDoor(ctx, bF, tF, wallH, trim, darken(wall,0.2));
+
+  // ── 9. Roof face ───────────────────────────────────────────────
+  const lgRoof = ctx.createLinearGradient(tT.x,tT.y,tF.x,tF.y);
+  lgRoof.addColorStop(0, lighten(roof,0.22));
+  lgRoof.addColorStop(0.5, lighten(roof,0.08));
+  lgRoof.addColorStop(1, darken(roof,0.06));
+  poly(ctx, [tT,tR,tF,tL], lgRoof, darken(roof,0.18), 2);
+  // Roof panel grid
+  for (let i=1; i<N; i++) {
+    seg(ctx,{x:CX+i*DU,y:tT.y+i*DV},{x:CX+(i-N)*DU,y:tT.y+(i+N)*DV}, alpha(lighten(roof,0.25),0.45), 2);
+    seg(ctx,{x:CX-i*DU,y:tT.y+i*DV},{x:CX+(N-i)*DU,y:tT.y+(N+i)*DV}, alpha(lighten(roof,0.25),0.45), 2);
+  }
+
+  // ── 10. Parapet walls ──────────────────────────────────────────
+  // Left parapet face
+  const lgPL = ctx.createLinearGradient(tL.x,0,tF.x,0);
+  lgPL.addColorStop(0, darken(wall,0.38)); lgPL.addColorStop(1, darken(wall,0.30));
+  poly(ctx,[tL,tF,pF,pL], lgPL, null);
+  // Right parapet face
+  const lgPR = ctx.createLinearGradient(tR.x,0,tF.x,0);
+  lgPR.addColorStop(0, darken(wall,0.12)); lgPR.addColorStop(1, darken(wall,0.08));
+  poly(ctx,[tR,tF,pF,pR], lgPR, null);
+  // Parapet top (thin diamond cap)
+  const lgPTop = ctx.createLinearGradient(pT.x,pT.y,pF.x,pF.y);
+  lgPTop.addColorStop(0, lighten(roof,0.28)); lgPTop.addColorStop(1, lighten(roof,0.06));
+  poly(ctx,[pT,pR,pF,pL], lgPTop, darken(roof,0.15), 2);
+
+  // ── 11. Trim edges ─────────────────────────────────────────────
+  seg(ctx, bF, bL, '#8B7B6B', 3);  seg(ctx, bF, bR, '#8B7B6B', 3);
+  // Vertical corner edges (full height to parapet top)
+  seg(ctx, bL, pL, darken(trim,0.3), 4);
+  seg(ctx, bR, pR, darken(trim,0.3), 4);
+  // Bold front corner edge — extends through parapet
+  seg(ctx, bF, pF, trim, 9);
+  // Parapet top edges
+  seg(ctx, pL, pF, trim, 5);  seg(ctx, pR, pF, trim, 5);
+  seg(ctx, pT, pL, darken(trim,0.22), 3); seg(ctx, pT, pR, darken(trim,0.22), 3);
+  // Roof-level back edges
+  seg(ctx, tT, tL, darken(trim,0.22), 3); seg(ctx, tT, tR, darken(trim,0.22), 3);
+  // Base back edges
+  seg(ctx, bL, bT, darken(trim,0.35), 2); seg(ctx, bR, bT, darken(trim,0.35), 2);
+
+  // ── 12. Roof decoration ────────────────────────────────────────
+  const roofCx = tF.x;
+  const roofCy = (tT.y+tR.y+tF.y+tL.y)/4;
+  drawRoofDecor(ctx, decor, roofCx, roofCy, N, tT, tR, tF, tL, roof, trim);
+
+  // ── 13. Silhouette outline ─────────────────────────────────────
+  ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=4;
+  ctx.beginPath();
+  // Front-left profile
+  ctx.moveTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y); ctx.lineTo(tL.x,tL.y);
+  ctx.lineTo(pL.x,pL.y); ctx.lineTo(pT.x,pT.y);
+  // Front-right profile
+  ctx.lineTo(pR.x,pR.y); ctx.lineTo(tR.x,tR.y); ctx.lineTo(bR.x,bR.y);
+  ctx.lineTo(bF.x,bF.y);
+  // Front edge and parapet front
+  ctx.lineTo(pF.x,pF.y); ctx.lineTo(pL.x,pL.y);
+  ctx.moveTo(pF.x,pF.y); ctx.lineTo(pR.x,pR.y);
+  ctx.moveTo(pF.x,pF.y); ctx.lineTo(bF.x,bF.y);
+  ctx.stroke();
+}
+
+// ─── Windows ──────────────────────────────────────────────────────────────────
+function drawWindows(ctx, origin, uVec, vVec, floors, cols, winColor, frameColor) {
+  for (let f=0; f<floors; f++) {
+    for (let c=0; c<cols; c++) {
+      const u0=(c+0.18)/cols, u1=(c+0.82)/cols;
+      const v0=f+0.12, v1=f+0.78;
+      const scale = {x: uVec.x*cols, y: uVec.y*cols};
+      const BL=facePoint(origin,scale,vVec,u0,v0), BR=facePoint(origin,scale,vVec,u1,v0);
+      const TR=facePoint(origin,scale,vVec,u1,v1), TL=facePoint(origin,scale,vVec,u0,v1);
+      poly(ctx,[BL,BR,TR,TL], frameColor, null);
+      const ins=0.07, uw=u1-u0;
+      const GB=facePoint(origin,scale,vVec,u0+ins*uw*cols,v0+ins);
+      const GBR=facePoint(origin,scale,vVec,u1-ins*uw*cols,v0+ins);
+      const GTR=facePoint(origin,scale,vVec,u1-ins*uw*cols,v1-ins);
+      const GT=facePoint(origin,scale,vVec,u0+ins*uw*cols,v1-ins);
+      poly(ctx,[GB,GBR,GTR,GT], winColor, null);
+      const sh=ctx.createLinearGradient(GT.x,GT.y,GBR.x,GBR.y);
+      sh.addColorStop(0,'rgba(255,255,255,0.4)'); sh.addColorStop(1,'rgba(255,255,255,0)');
+      poly(ctx,[GB,GBR,GTR,GT], sh, null);
+    }
+  }
+}
+
+// ─── Door ────────────────────────────────────────────────────────────────────
+function drawDoor(ctx, bF, tF, wallH, trim, shadow) {
+  const doorW=80, doorH=Math.min(wallH*0.35,140), canopy=20;
+  ctx.fillStyle=darken(trim,0.3);
+  ctx.fillRect(bF.x-doorW/2-8, bF.y-doorH-8, doorW+16, doorH+8);
+  const dg=ctx.createLinearGradient(bF.x-doorW/2,bF.y-doorH,bF.x+doorW/2,bF.y);
+  dg.addColorStop(0,lighten('#7B4F2A',0.15)); dg.addColorStop(1,darken('#7B4F2A',0.2));
+  ctx.fillStyle=dg;
+  ctx.fillRect(bF.x-doorW/2,bF.y-doorH,doorW,doorH);
+  ctx.strokeStyle=darken('#7B4F2A',0.35); ctx.lineWidth=3;
+  ctx.strokeRect(bF.x-doorW/2+8,bF.y-doorH+8,doorW-16,doorH/2-12);
+  ctx.strokeRect(bF.x-doorW/2+8,bF.y-doorH/2+4,doorW-16,doorH/2-12);
+  ctx.fillStyle=trim;
+  ctx.beginPath(); ctx.arc(bF.x+doorW/2-18,bF.y-doorH*0.45,6,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=trim;
+  ctx.fillRect(bF.x-doorW/2-16,bF.y-doorH-8-canopy,doorW+32,canopy);
+  ctx.strokeStyle=darken(trim,0.3); ctx.lineWidth=2;
+  ctx.strokeRect(bF.x-doorW/2-16,bF.y-doorH-8-canopy,doorW+32,canopy);
+  for (let i=0; i<3; i++) {
+    const sw=doorW+24+i*20, sh=14, sy=bF.y-sh*(3-i);
+    ctx.fillStyle=lighten('#C8B89A',i*0.08); ctx.strokeStyle=darken('#C8B89A',0.2);
+    ctx.lineWidth=2;
+    ctx.fillRect(bF.x-sw/2,sy,sw,sh); ctx.strokeRect(bF.x-sw/2,sy,sw,sh);
+  }
+}
+
+// ─── Roof Decorations ────────────────────────────────────────────────────────
+function drawRoofDecor(ctx, type, cx, cy, N, tT, tR, tF, tL, roofColor, trim) {
+  const mx=(tT.x+tR.x+tF.x+tL.x)/4, my=(tT.y+tR.y+tF.y+tL.y)/4;
+
+  if (type === 'dome') {
+    ctx.beginPath(); ctx.arc(mx,my-20,38,0,Math.PI*2);
+    ctx.fillStyle=lighten(roofColor,0.25); ctx.fill();
+    ctx.strokeStyle=trim; ctx.lineWidth=4; ctx.stroke();
+    ctx.beginPath(); ctx.arc(mx-10,my-32,14,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.fill();
+    seg(ctx,{x:mx,y:my-58},{x:mx,y:my-110},trim,4);
+    drawFlag(ctx,mx,my-110);
+  }
+  else if (type === 'dome_grand') {
+    // Grand civic dome (townhall / library_lg)
+    const base=my-10;
+    // Octagonal dome base
+    const r1=70, r2=50, r3=30;
+    ctx.beginPath(); ctx.arc(mx,base,r1,0,Math.PI*2);
+    ctx.fillStyle=darken(roofColor,0.1); ctx.fill();
+    ctx.strokeStyle=trim; ctx.lineWidth=5; ctx.stroke();
+    // Drum
+    ctx.fillStyle=lighten(roofColor,0.3);
+    ctx.beginPath(); ctx.arc(mx,base-20,r2,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=trim; ctx.lineWidth=3; ctx.stroke();
+    // Dome cap
+    const dg=ctx.createRadialGradient(mx-15,base-55,5,mx,base-40,r3);
+    dg.addColorStop(0,'rgba(255,255,255,0.4)'); dg.addColorStop(1,lighten(roofColor,0.4));
+    ctx.fillStyle=dg;
+    ctx.beginPath(); ctx.arc(mx,base-40,r3,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle=trim; ctx.lineWidth=3; ctx.stroke();
+    // Central spire
+    seg(ctx,{x:mx,y:base-70},{x:mx,y:base-150},trim,6);
+    ctx.fillStyle=trim;
+    ctx.beginPath(); ctx.arc(mx,base-150,10,0,Math.PI*2); ctx.fill();
+    // Flags on corners
+    drawFlag(ctx, tL.x+20, tL.y-20);
+    drawFlag(ctx, tR.x-20, tR.y-20);
+    seg(ctx,{x:tT.x,y:tT.y-10},{x:tT.x,y:tT.y-60},trim,4);
+    drawFlag(ctx,tT.x,tT.y-60);
+  }
+  else if (type === 'ac') {
+    const units=[{x:mx-80,y:my-10},{x:mx+40,y:my-20}];
+    units.forEach(u=>{
+      ctx.fillStyle='#94a3b8'; ctx.fillRect(u.x-30,u.y-20,60,28);
+      ctx.strokeStyle='#64748b'; ctx.lineWidth=2; ctx.strokeRect(u.x-30,u.y-20,60,28);
+      for (let i=0;i<4;i++) { ctx.fillStyle='#475569'; ctx.fillRect(u.x-22+i*12,u.y-14,8,16); }
+    });
+    seg(ctx,{x:mx+100,y:my-20},{x:mx+100,y:my-80},'#94a3b8',4);
+    seg(ctx,{x:mx+80,y:my-55},{x:mx+120,y:my-55},'#94a3b8',3);
+  }
+  else if (type === 'tanks') {
+    [[mx-100,my-10,32],[mx+60,my-20,24]].forEach(([tx,ty,r])=>{
+      ctx.fillStyle='#7B5A3A';
+      ctx.beginPath(); ctx.ellipse(tx,ty,r,r*0.4,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#6B4A2A'; ctx.fillRect(tx-r,ty-38,r*2,38);
+      ctx.fillStyle='#8B6A4A';
+      ctx.beginPath(); ctx.ellipse(tx,ty-38,r,r*0.4,0,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#5B3A1A'; ctx.lineWidth=2; ctx.strokeRect(tx-r,ty-38,r*2,38);
+      seg(ctx,{x:tx-r*0.6,y:ty},{x:tx-r*0.6,y:ty+18},'#5B3A1A',3);
+      seg(ctx,{x:tx+r*0.6,y:ty},{x:tx+r*0.6,y:ty+18},'#5B3A1A',3);
+    });
+  }
+  else if (type === 'terrace') {
+    const railPts=[{x:tT.x,y:tT.y-8},{x:tR.x,y:tR.y-8},{x:tF.x,y:tF.y-8},{x:tL.x,y:tL.y-8}];
+    railPts.forEach(p=>{
+      seg(ctx,p,{x:p.x,y:p.y-36},trim,5);
+      ctx.fillStyle=trim; ctx.beginPath(); ctx.arc(p.x,p.y-36,7,0,Math.PI*2); ctx.fill();
+    });
+    ctx.strokeStyle=darken(trim,0.1); ctx.lineWidth=4;
+    ctx.beginPath();
+    railPts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y-36):ctx.lineTo(p.x,p.y-36));
+    ctx.closePath(); ctx.stroke();
+    seg(ctx,{x:mx,y:my-8},{x:mx,y:my-80},trim,6);
+    ctx.beginPath(); ctx.arc(mx,my-80,10,0,Math.PI*2); ctx.fillStyle=trim; ctx.fill();
+  }
+  else if (type === 'spire') {
+    const base={x:mx,y:my}, spireH=200;
+    const sg=ctx.createLinearGradient(base.x,base.y,base.x,base.y-spireH);
+    sg.addColorStop(0,roofColor); sg.addColorStop(0.5,lighten(roofColor,0.2)); sg.addColorStop(1,trim);
+    ctx.fillStyle=sg;
+    ctx.beginPath();
+    ctx.moveTo(base.x-28,base.y); ctx.lineTo(base.x+28,base.y);
+    ctx.lineTo(base.x+6,base.y-spireH*0.7); ctx.lineTo(base.x,base.y-spireH);
+    ctx.lineTo(base.x-6,base.y-spireH*0.7); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle=trim; ctx.lineWidth=3; ctx.stroke();
+    ctx.fillStyle='#FF4444';
+    ctx.beginPath(); ctx.arc(base.x,base.y-spireH,10,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,68,68,0.3)';
+    ctx.beginPath(); ctx.arc(base.x,base.y-spireH,20,0,Math.PI*2); ctx.fill();
+    [[-100,-30],[100,-45]].forEach(([ox,oy])=>{
+      seg(ctx,{x:base.x+ox,y:base.y+oy},{x:base.x+ox,y:base.y+oy-60},'#94a3b8',3);
+      seg(ctx,{x:base.x+ox-16,y:base.y+oy-30},{x:base.x+ox+16,y:base.y+oy-30},'#94a3b8',2);
+    });
+    drawFlag(ctx,tL.x+20,tL.y-30); drawFlag(ctx,tR.x-20,tR.y-30);
+  }
+  else if (type === 'awning') {
+    // Striped canopy extending at mid-height from front
+    const awY = tF.y + (tF.y < 800 ? 80 : 120); // just below top of front wall
+    const aw = N*DU*0.55, ad = N*DV*0.28;
+    const pts = [
+      {x:CX-aw, y:awY}, {x:CX+aw, y:awY},
+      {x:CX+aw+ad, y:awY+ad}, {x:CX-aw-ad, y:awY+ad}
+    ];
+    ctx.save();
+    ctx.beginPath();
+    pts.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y));
+    ctx.closePath(); ctx.clip();
+    const stripeW=52;
+    for (let x=CX-aw-ad-50; x<CX+aw+ad+50; x+=stripeW*2) {
+      ctx.fillStyle='#E85D3A'; ctx.fillRect(x,awY-4,stripeW,ad+16);
+      ctx.fillStyle='#FBBF24'; ctx.fillRect(x+stripeW,awY-4,stripeW,ad+16);
+    }
+    ctx.restore();
+    poly(ctx,pts,null,'#C04020',5);
+    // Valance fringe
+    for (let x=pts[3].x; x<pts[2].x; x+=22) {
+      seg(ctx,{x:x,y:awY+ad},{x:x+11,y:awY+ad+22},'#C04020',3);
+    }
+  }
+  else if (type === 'signage') {
+    // Neon sign panel above building
+    const panelW=N*DU*0.6+40, panelH=50;
+    const panelX=CX-panelW/2, panelY=tF.y-40;
+    // Panel backing
+    ctx.fillStyle='#1E293B';
+    ctx.fillRect(panelX,panelY,panelW,panelH);
+    ctx.strokeStyle='#38BDF8'; ctx.lineWidth=4;
+    ctx.strokeRect(panelX,panelY,panelW,panelH);
+    // Neon glow text strip
+    const ng=ctx.createLinearGradient(panelX,panelY,panelX+panelW,panelY+panelH);
+    ng.addColorStop(0,'#38BDF8'); ng.addColorStop(0.5,'#F5C542'); ng.addColorStop(1,'#38BDF8');
+    ctx.fillStyle=ng;
+    ctx.fillRect(panelX+10,panelY+16,panelW-20,panelH-32);
+    // Glow halo
+    ctx.shadowColor='#38BDF8'; ctx.shadowBlur=20;
+    ctx.strokeStyle='#38BDF8'; ctx.lineWidth=3;
+    ctx.strokeRect(panelX,panelY,panelW,panelH);
+    ctx.shadowBlur=0;
+    // AC unit on roof
+    ctx.fillStyle='#94a3b8'; ctx.fillRect(mx-30,my-20,60,28);
+    ctx.strokeStyle='#64748b'; ctx.lineWidth=2; ctx.strokeRect(mx-30,my-20,60,28);
+  }
+}
+
+function drawFlag(ctx, fx, fy) {
+  seg(ctx,{x:fx,y:fy},{x:fx,y:fy+40},'#F5C542',4);
+  ctx.fillStyle='#E85D5D';
+  ctx.beginPath(); ctx.moveTo(fx,fy); ctx.lineTo(fx+36,fy+10); ctx.lineTo(fx,fy+20);
+  ctx.closePath(); ctx.fill();
+}
+
+// ─── Wall Texture ─────────────────────────────────────────────────────────────
+// pA, pB = bottom corners of the face (left→front or right→front)
+// wallH = wall pixel height, type = texture id, wallColor = face base color
+function drawFaceTexture(ctx, pA, pB, wallH, type, wallColor, floors) {
+  const tA={x:pA.x,y:pA.y-wallH}, tB={x:pB.x,y:pB.y-wallH};
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pA.x,pA.y); ctx.lineTo(pB.x,pB.y); ctx.lineTo(tB.x,tB.y); ctx.lineTo(tA.x,tA.y);
+  ctx.closePath(); ctx.clip();
+
+  if (type === 'brick') {
+    const rows=Math.max(4,floors*4), cols=6, rowH=wallH/rows;
+    const mortar=darken(wallColor,0.30);
+    ctx.strokeStyle=mortar; ctx.lineWidth=2;
+    // Horizontal mortar lines
+    for (let r=1; r<rows; r++) {
+      const h=r*rowH; ctx.beginPath(); ctx.moveTo(pA.x,pA.y-h); ctx.lineTo(pB.x,pB.y-h); ctx.stroke();
+    }
+    // Vertical mortar (alternating half-brick offset)
+    for (let r=0; r<rows; r++) {
+      const off=r%2===0?0:0.5;
+      for (let c=1; c<cols; c++) {
+        const u=(c+off)/cols; if (u<=0||u>=1) continue;
+        const xc=pA.x+u*(pB.x-pA.x);
+        const yBot=pA.y+u*(pB.y-pA.y)-r*rowH;
+        ctx.beginPath(); ctx.moveTo(xc,yBot); ctx.lineTo(xc,yBot-rowH); ctx.stroke();
+      }
+    }
+    // Brick top highlights
+    ctx.strokeStyle=alpha(lighten(wallColor,0.22),0.38); ctx.lineWidth=1;
+    for (let r=0; r<rows; r++) {
+      const h=(r+0.86)*rowH; ctx.beginPath(); ctx.moveTo(pA.x,pA.y-h); ctx.lineTo(pB.x,pB.y-h); ctx.stroke();
+    }
+  }
+
+  else if (type === 'glass_curtain') {
+    const flen=Math.sqrt((pB.x-pA.x)**2+(pB.y-pA.y)**2);
+    const nC=Math.max(5,Math.round(flen/100)), nR=Math.max(floors,3), rH=wallH/nR;
+    // Glass panes
+    for (let r=0; r<nR; r++) {
+      for (let c=0; c<nC; c++) {
+        const u0=(c+0.07)/nC, u1=(c+0.93)/nC; if (u0>=1) continue;
+        const hB=r*rH, hT=(r+1)*rH;
+        const x0=pA.x+u0*(pB.x-pA.x), x1=pA.x+u1*(pB.x-pA.x);
+        const y0=pA.y+u0*(pB.y-pA.y)-hB, y1=pA.y+u1*(pB.y-pA.y)-hB;
+        const yT0=pA.y+u0*(pB.y-pA.y)-hT+3, yT1=pA.y+u1*(pB.y-pA.y)-hT+3;
+        const isReflect=(r+c)%4===0;
+        ctx.fillStyle=alpha(lighten(wallColor,isReflect?0.55:0.30),0.55);
+        ctx.beginPath(); ctx.moveTo(x0,y0-3); ctx.lineTo(x1,y1-3); ctx.lineTo(x1,yT1); ctx.lineTo(x0,yT0); ctx.closePath(); ctx.fill();
+        // Reflection gradient
+        const rg=ctx.createLinearGradient(x0,yT0,x0,y0);
+        rg.addColorStop(0,'rgba(255,255,255,0.30)'); rg.addColorStop(0.35,'rgba(255,255,255,0.10)'); rg.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=rg; ctx.fill();
+      }
+    }
+    // Frame grid
+    ctx.strokeStyle=darken(wallColor,0.52); ctx.lineWidth=3;
+    for (let r=0; r<=nR; r++) { const h=r*rH; ctx.beginPath(); ctx.moveTo(pA.x,pA.y-h); ctx.lineTo(pB.x,pB.y-h); ctx.stroke(); }
+    for (let c=1; c<nC; c++) {
+      const u=c/nC, xc=pA.x+u*(pB.x-pA.x);
+      ctx.beginPath(); ctx.moveTo(xc,pA.y+u*(pB.y-pA.y)); ctx.lineTo(xc,pA.y+u*(pB.y-pA.y)-wallH); ctx.stroke();
+    }
+  }
+
+  else if (type === 'ashlar') {
+    const rows=Math.max(3,Math.floor(wallH/100)), cols=3, rowH=wallH/rows;
+    const joint=darken(wallColor,0.32), hi=lighten(wallColor,0.22);
+    for (let r=1; r<rows; r++) {
+      const h=r*rowH;
+      ctx.strokeStyle=joint; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(pA.x,pA.y-h); ctx.lineTo(pB.x,pB.y-h); ctx.stroke();
+      ctx.strokeStyle=hi; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(pA.x,pA.y-h-2); ctx.lineTo(pB.x,pB.y-h-2); ctx.stroke();
+    }
+    for (let r=0; r<rows; r++) {
+      const off=r%2===0?0:0.5;
+      for (let c=1; c<cols; c++) {
+        const u=(c+off)/cols; if (u<=0||u>=1) continue;
+        const xc=pA.x+u*(pB.x-pA.x), yBot=pA.y+u*(pB.y-pA.y)-r*rowH;
+        ctx.strokeStyle=joint; ctx.lineWidth=3;
+        ctx.beginPath(); ctx.moveTo(xc,yBot); ctx.lineTo(xc,yBot-rowH); ctx.stroke();
+        ctx.strokeStyle=hi; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.moveTo(xc+2,yBot); ctx.lineTo(xc+2,yBot-rowH); ctx.stroke();
+      }
+    }
+  }
+
+  else if (type === 'panel_grid') {
+    const flen=Math.sqrt((pB.x-pA.x)**2+(pB.y-pA.y)**2);
+    const nC=Math.max(3,Math.floor(flen/180)), nR=floors, rH=wallH/nR;
+    ctx.strokeStyle=alpha(darken(wallColor,0.28),0.78); ctx.lineWidth=4;
+    for (let r=1; r<nR; r++) { const h=r*rH; ctx.beginPath(); ctx.moveTo(pA.x,pA.y-h); ctx.lineTo(pB.x,pB.y-h); ctx.stroke(); }
+    for (let c=1; c<nC; c++) {
+      const u=c/nC, xc=pA.x+u*(pB.x-pA.x);
+      ctx.beginPath(); ctx.moveTo(xc,pA.y+u*(pB.y-pA.y)); ctx.lineTo(xc,pA.y+u*(pB.y-pA.y)-wallH); ctx.stroke();
+    }
+    // Panel bevel shadows/highlights
+    for (let r=0; r<nR; r++) {
+      const hB=r*rH, hT=(r+1)*rH;
+      for (let c=0; c<nC; c++) {
+        const u0=(c+0.08)/nC, u1=(c+0.92)/nC; if (u1>1) continue;
+        const x0=pA.x+u0*(pB.x-pA.x), x1=pA.x+u1*(pB.x-pA.x);
+        ctx.strokeStyle=alpha(lighten(wallColor,0.25),0.55); ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.moveTo(x0,pA.y+u0*(pB.y-pA.y)-hT+6); ctx.lineTo(x1,pA.y+u1*(pB.y-pA.y)-hT+6); ctx.stroke();
+        ctx.strokeStyle=alpha(darken(wallColor,0.22),0.50);
+        ctx.beginPath(); ctx.moveTo(x0,pA.y+u0*(pB.y-pA.y)-hB-5); ctx.lineTo(x1,pA.y+u1*(pB.y-pA.y)-hB-5); ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  FLAT TILE RENDERER  (ground, concrete, grass)
+// ═══════════════════════════════════════════════════════════════
+function renderFlatTile(cv, cfg) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const N = cfg.N || 1;
+  const ty = getTY(N);
+  const bT=isoP(0,0,ty), bR=isoP(N,0,ty), bF=isoP(N,N,ty), bL=isoP(0,N,ty);
+
+  // Base gradient fill
+  const gl = ctx.createLinearGradient(bT.x,bT.y,bF.x,bF.y);
+  gl.addColorStop(0, lighten(cfg.fill,0.12));
+  gl.addColorStop(1, darken(cfg.fill,0.08));
+  poly(ctx,[bT,bR,bF,bL], gl, darken(cfg.fill,0.3), 4);
+
+  // Clip to diamond for texture
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(bT.x,bT.y); ctx.lineTo(bR.x,bR.y); ctx.lineTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y);
+  ctx.closePath(); ctx.clip();
+
+  const minX=bL.x, maxX=bR.x, minY=bT.y, maxY=bF.y;
+
+  if (cfg.texture === 'grass') {
+    // Random grass blobs
+    for (let i=0; i<90; i++) {
+      const px=minX+((i*137.5)%(maxX-minX));
+      const py=minY+((i*97.3)%(maxY-minY));
+      const r=(i%3)+3;
+      ctx.fillStyle=i%4===0?lighten(cfg.fill,0.25):darken(cfg.fill,0.08);
+      ctx.beginPath(); ctx.ellipse(px,py,r*3,r*1.5,((i*47)%180)*Math.PI/180,0,Math.PI*2); ctx.fill();
+    }
+    // Flower dots
+    [[minX+100,minY+60],[CX-60,minY+140],[CX+80,minY+90],[minX+60,maxY-80]].forEach(([fx,fy])=>{
+      ctx.fillStyle='#FDE68A'; ctx.beginPath(); ctx.arc(fx,fy,9,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#F59E0B'; ctx.beginPath(); ctx.arc(fx,fy,4,0,Math.PI*2); ctx.fill();
+    });
+  }
+  else if (cfg.texture === 'concrete') {
+    // Slab grid lines
+    ctx.strokeStyle=darken(cfg.fill,0.2); ctx.lineWidth=3;
+    for (let i=1; i<N*3; i++) {
+      const t=i/(N*3);
+      const a=isoP(t*N,0,ty), b=isoP(t*N,N,ty);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      const c=isoP(0,t*N,ty), d=isoP(N,t*N,ty);
+      ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.lineTo(d.x,d.y); ctx.stroke();
+    }
+    // Crack lines
+    ctx.strokeStyle=alpha(darken(cfg.fill,0.25),0.6); ctx.lineWidth=2; ctx.setLineDash([20,15]);
+    [[0.2,0.1,0.5,0.6],[0.7,0.3,0.85,0.8],[0.4,0.7,0.6,0.9]].forEach(([c1,r1,c2,r2])=>{
+      const pa=isoP(c1*N,r1*N,ty), pb=isoP(c2*N,r2*N,ty);
+      ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+  }
+  else if (cfg.texture === 'dirt') {
+    // Pebble pattern
+    for (let i=0; i<50; i++) {
+      const px=minX+((i*173)%(maxX-minX));
+      const py=minY+((i*113)%(maxY-minY));
+      ctx.fillStyle=i%3===0?lighten(cfg.fill,0.15):darken(cfg.fill,0.12);
+      ctx.beginPath(); ctx.ellipse(px,py,12+i%10,6+i%6,((i*37)%180)*Math.PI/180,0,Math.PI*2); ctx.fill();
+    }
+  }
+  ctx.restore();
+  // Border
+  poly(ctx,[bT,bR,bF,bL],null,darken(cfg.fill,0.35),4);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  ROAD TILE RENDERER  (1×1)
+// ═══════════════════════════════════════════════════════════════
+function renderRoadTile(cv, cfg) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const ty = getTY(1);
+  const P = (col,row) => isoP(col,row,ty);
+  const bT=P(0,0), bR=P(1,0), bF=P(1,1), bL=P(0,1);
+
+  // Asphalt base
+  const ag=ctx.createLinearGradient(bT.x,bT.y,bF.x,bF.y);
+  ag.addColorStop(0,'#4B5563'); ag.addColorStop(1,'#374151');
+  poly(ctx,[bT,bR,bF,bL], ag, '#1F2937', 4);
+
+  // Sidewalk border
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(bT.x,bT.y); ctx.lineTo(bR.x,bR.y); ctx.lineTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y); ctx.closePath(); ctx.clip();
+  const bw=0.12;
+  poly(ctx,[P(0,0),P(1,0),P(1-bw,bw),P(bw,0)],'#6B7280',null);
+  poly(ctx,[P(1,0),P(1,1),P(1-bw,1-bw),P(1-bw,bw)],'#6B7280',null);
+  poly(ctx,[P(0,1),P(1,1),P(1-bw,1-bw),P(bw,1-bw)],'#6B7280',null);
+  poly(ctx,[P(0,0),P(0,1),P(bw,1-bw),P(bw,0)],'#6B7280',null);
+  ctx.restore();
+
+  const roadColor='#374151', lineColor='#FBBF24', rw=0.3;
+
+  if (cfg.dir==='col' || cfg.dir==='cross') {
+    // Road band: row direction from 0.3 to 0.7 (runs NW-SE on screen)
+    poly(ctx,[P(0.5-rw,0),P(0.5+rw,0),P(0.5+rw,1),P(0.5-rw,1)], '#374151', null);
+    // Center dashes
+    for (let t=0.05; t<1; t+=0.18) {
+      seg(ctx,P(0.5,t),P(0.5,t+0.1),lineColor,5);
+    }
+  }
+  if (cfg.dir==='row' || cfg.dir==='cross') {
+    // Road band: col direction (runs NE-SW on screen)
+    poly(ctx,[P(0,0.5-rw),P(1,0.5-rw),P(1,0.5+rw),P(0,0.5+rw)], '#374151', null);
+    for (let t=0.05; t<1; t+=0.18) {
+      seg(ctx,P(t,0.5),P(t+0.1,0.5),lineColor,5);
+    }
+  }
+  if (cfg.dir==='turn') {
+    // Top half col-direction
+    poly(ctx,[P(0.5-rw,0),P(0.5+rw,0),P(0.5+rw,0.5+rw),P(0.5-rw,0.5+rw)],'#374151',null);
+    // Left half row-direction
+    poly(ctx,[P(0,0.5-rw),P(0.5+rw,0.5-rw),P(0.5+rw,0.5+rw),P(0,0.5+rw)],'#374151',null);
+    // Arc corner fill
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(bT.x,bT.y); ctx.lineTo(bR.x,bR.y); ctx.lineTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y); ctx.closePath(); ctx.clip();
+    ctx.fillStyle='#374151';
+    ctx.beginPath(); ctx.arc(P(0.5,0.5).x,P(0.5,0.5).y,rw*DU*1.4,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  if (cfg.dir==='cross') {
+    // Intersection box
+    poly(ctx,[P(0.5-rw,0.5-rw),P(0.5+rw,0.5-rw),P(0.5+rw,0.5+rw),P(0.5-rw,0.5+rw)],'#374151',null);
+  }
+
+  // Diamond border
+  poly(ctx,[bT,bR,bF,bL],null,'#1F2937',4);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  TREE RENDERER  (1×1)
+// ═══════════════════════════════════════════════════════════════
+function renderTree(cv, cfg) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const ty = getTY(1);
+  const bT=isoP(0,0,ty), bR=isoP(1,0,ty), bF=isoP(1,1,ty), bL=isoP(0,1,ty);
+
+  // Grass base
+  const gl=ctx.createLinearGradient(bT.x,bT.y,bF.x,bF.y);
+  gl.addColorStop(0,'#6BA358'); gl.addColorStop(1,'#5A9248');
+  poly(ctx,[bT,bR,bF,bL], gl, '#4A8038', 3);
+
+  const isLg = cfg.size==='lg';
+  const treeX = CX;
+  const treeBaseY = FRONT_Y - DV;  // center of tile
+  const trunkH = isLg ? 260 : 120;
+  const canopyR = isLg ? 240 : 150;
+  const leafColor = isLg ? '#3E8A2A' : '#5CAF41';
+
+  // Drop shadow
+  ctx.fillStyle='rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(treeX, treeBaseY-20, canopyR*0.55, canopyR*0.18, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Trunk
+  const trunkColor='#7B5228';
+  ctx.fillStyle=trunkColor;
+  ctx.fillRect(treeX-14, treeBaseY-trunkH-20, 28, trunkH+20);
+  ctx.strokeStyle=darken(trunkColor,0.3); ctx.lineWidth=2;
+  ctx.strokeRect(treeX-14, treeBaseY-trunkH-20, 28, trunkH+20);
+
+  if (isLg) {
+    // Layered conifer — 4 rings from bottom to top
+    [[treeBaseY-trunkH-30, canopyR*0.75],
+     [treeBaseY-trunkH-160, canopyR*0.88],
+     [treeBaseY-trunkH-300, canopyR*0.70],
+     [treeBaseY-trunkH-430, canopyR*0.45]].forEach(([cy,r],i)=>{
+      ctx.fillStyle=darken(leafColor, i*0.06);
+      ctx.beginPath(); ctx.arc(treeX+10,cy,r*0.85,0,Math.PI*2); ctx.fill();
+      const g=ctx.createRadialGradient(treeX-r*0.2,cy-r*0.2,10,treeX,cy,r);
+      g.addColorStop(0,lighten(leafColor,0.25)); g.addColorStop(1,darken(leafColor,i*0.06));
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(treeX,cy,r,0,Math.PI*2); ctx.fill();
+    });
+  } else {
+    // Round canopy — shadow side then main
+    const cy=treeBaseY-trunkH-canopyR*0.65;
+    ctx.fillStyle=darken(leafColor,0.2);
+    ctx.beginPath(); ctx.arc(treeX+18,cy+14,canopyR,0,Math.PI*2); ctx.fill();
+    const g=ctx.createRadialGradient(treeX-canopyR*0.25,cy-canopyR*0.25,10,treeX,cy,canopyR);
+    g.addColorStop(0,lighten(leafColor,0.3)); g.addColorStop(0.6,leafColor); g.addColorStop(1,darken(leafColor,0.2));
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(treeX,cy,canopyR,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.2)';
+    ctx.beginPath(); ctx.arc(treeX-40,cy-40,canopyR*0.28,0,Math.PI*2); ctx.fill();
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  BUSH RENDERER  (1×1)
+// ═══════════════════════════════════════════════════════════════
+function renderBush(cv) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const ty = getTY(1);
+  const bT=isoP(0,0,ty), bR=isoP(1,0,ty), bF=isoP(1,1,ty), bL=isoP(0,1,ty);
+  poly(ctx,[bT,bR,bF,bL],'#6BA358','#4A8038',3);
+
+  const cx=CX, cy=FRONT_Y-DV-30;
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.15)';
+  ctx.beginPath(); ctx.ellipse(cx,cy+30,150,45,0,0,Math.PI*2); ctx.fill();
+
+  const baseColor='#68B84A';
+  // Bush blobs (deterministic positions)
+  [[-65,20,80],[ 65,15,72],[  0,-22,92],[-32,38,62],[ 45,33,58]].forEach(([ox,oy,r],i)=>{
+    ctx.fillStyle=darken(baseColor,i*0.04);
+    ctx.beginPath(); ctx.arc(cx+ox,cy+oy,r,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.12)';
+    ctx.beginPath(); ctx.arc(cx+ox-r*0.22,cy+oy-r*0.22,r*0.38,0,Math.PI*2); ctx.fill();
+  });
+  // Flowers
+  [[-30,-28],[52,10],[-80,24]].forEach(([fx,fy])=>{
+    ctx.fillStyle='#FDE68A'; ctx.beginPath(); ctx.arc(cx+fx,cy+fy,13,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#F59E0B'; ctx.beginPath(); ctx.arc(cx+fx,cy+fy,6,0,Math.PI*2); ctx.fill();
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  PARK RENDERER  (2×2)
+// ═══════════════════════════════════════════════════════════════
+function renderPark(cv) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const N=2, ty=getTY(N);
+  const P=(c,r)=>isoP(c,r,ty);
+  const bT=P(0,0),bR=P(2,0),bF=P(2,2),bL=P(0,2);
+
+  // Grass base
+  const gl=ctx.createLinearGradient(bT.x,bT.y,bF.x,bF.y);
+  gl.addColorStop(0,'#72B05F'); gl.addColorStop(1,'#5D9A4D');
+  poly(ctx,[bT,bR,bF,bL],gl,'#4A8038',4);
+
+  // Paths (gravel)
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(bT.x,bT.y); ctx.lineTo(bR.x,bR.y); ctx.lineTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y); ctx.closePath(); ctx.clip();
+  ctx.strokeStyle='#C8B88A'; ctx.lineWidth=18; ctx.setLineDash([]);
+  // Path T→F
+  ctx.beginPath(); ctx.moveTo(P(0.4,0.4).x,P(0.4,0.4).y); ctx.lineTo(P(1.6,1.6).x,P(1.6,1.6).y); ctx.stroke();
+  // Path L→R
+  ctx.beginPath(); ctx.moveTo(P(1.6,0.4).x,P(1.6,0.4).y); ctx.lineTo(P(0.4,1.6).x,P(0.4,1.6).y); ctx.stroke();
+  ctx.restore();
+
+  // Mini trees in corners
+  [[0.28,0.28],[1.72,0.28],[0.28,1.72],[1.72,1.72]].forEach(([c,r],i)=>{
+    const {x,y}=P(c,r);
+    const col=i%2===0?'#5CAF41':'#4A9A35';
+    ctx.fillStyle=darken(col,0.2);
+    ctx.beginPath(); ctx.arc(x+14,y,50,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(x,y,55,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.18)';
+    ctx.beginPath(); ctx.arc(x-14,y-14,18,0,Math.PI*2); ctx.fill();
+  });
+
+  // Fountain at center
+  const fc=P(1,1);
+  ctx.fillStyle='rgba(0,0,0,0.15)';
+  ctx.beginPath(); ctx.ellipse(fc.x,fc.y+10,80,26,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#D8EFFF';
+  ctx.beginPath(); ctx.ellipse(fc.x,fc.y-28,80,50,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#7BAED8'; ctx.lineWidth=5; ctx.stroke();
+  ctx.strokeStyle='#D8C8A8'; ctx.lineWidth=8;
+  ctx.beginPath(); ctx.ellipse(fc.x,fc.y-22,88,56,0,0,Math.PI*2); ctx.stroke();
+  // Jet
+  const jg=ctx.createLinearGradient(fc.x,fc.y-100,fc.x,fc.y-28);
+  jg.addColorStop(0,'rgba(173,216,230,0)'); jg.addColorStop(0.5,'rgba(173,216,230,0.7)'); jg.addColorStop(1,'rgba(173,216,230,0)');
+  ctx.fillStyle=jg;
+  ctx.fillRect(fc.x-6,fc.y-100,12,72);
+  [[-22,50],[22,45],[0,55]].forEach(([ox,h])=>{
+    ctx.fillStyle='rgba(173,216,230,0.5)';
+    ctx.beginPath(); ctx.ellipse(fc.x+ox,fc.y-28,7,h,0,0,Math.PI*2); ctx.fill();
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  EMPTY LOT RENDERER  (3×3)
+// ═══════════════════════════════════════════════════════════════
+function renderEmptyLot(cv) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const N=3, ty=getTY(N);
+  const P=(c,r)=>isoP(c,r,ty);
+  const bT=P(0,0),bR=P(3,0),bF=P(3,3),bL=P(0,3);
+
+  // Sand/dirt base
+  const gl=ctx.createLinearGradient(bT.x,bT.y,bF.x,bF.y);
+  gl.addColorStop(0,'#C9AC80'); gl.addColorStop(1,'#B89466');
+  poly(ctx,[bT,bR,bF,bL],gl,'#A8845A',4);
+
+  // Grid lines
+  ctx.strokeStyle='rgba(100,76,40,0.3)'; ctx.lineWidth=2;
+  for (let i=1; i<3; i++) {
+    seg(ctx,P(i,0),P(i,3),'rgba(100,76,40,0.3)',2);
+    seg(ctx,P(0,i),P(3,i),'rgba(100,76,40,0.3)',2);
+  }
+
+  // Texture pebbles
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(bT.x,bT.y); ctx.lineTo(bR.x,bR.y); ctx.lineTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y); ctx.closePath(); ctx.clip();
+  for (let i=0; i<60; i++) {
+    const px=bL.x+((i*173+37)%(bR.x-bL.x));
+    const py=bT.y+((i*113+19)%(bF.y-bT.y));
+    ctx.fillStyle=i%3===0?lighten('#C9AC80',0.15):darken('#C9AC80',0.12);
+    ctx.beginPath(); ctx.ellipse(px,py,8+(i%9),4+(i%5),((i*37)%180)*Math.PI/180,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  // Warning tape border
+  ctx.setLineDash([36,22]);
+  ctx.strokeStyle='#F59E0B'; ctx.lineWidth=9;
+  ctx.beginPath();
+  ctx.moveTo(bT.x,bT.y); ctx.lineTo(bR.x,bR.y); ctx.lineTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y); ctx.closePath(); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Stakes at corners
+  [bT,bR,bF,bL].forEach(p=>{
+    ctx.fillStyle='#C87820';
+    ctx.fillRect(p.x-5,p.y-70,10,70);
+    ctx.fillStyle='#F59E0B';
+    ctx.beginPath(); ctx.arc(p.x,p.y-72,12,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,0.3)';
+    ctx.fillRect(p.x+3,p.y-70,3,70);
+  });
+
+  // "FOR SALE" sign at centre
+  const fc=P(1.5,1.5);
+  seg(ctx,{x:fc.x,y:fc.y},{x:fc.x,y:fc.y-220},'#7B4A1A',10);
+  ctx.fillStyle='#FBBF24'; ctx.beginPath(); ctx.roundRect(fc.x-110,fc.y-300,220,80,8); ctx.fill();
+  ctx.strokeStyle='#D97706'; ctx.lineWidth=5; ctx.stroke();
+  ctx.fillStyle='#1E3A5F'; ctx.font='bold 52px system-ui';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('FOR SALE',fc.x,fc.y-262);
+  // Small sign below
+  ctx.fillStyle='#F8FAFC'; ctx.beginPath(); ctx.roundRect(fc.x-80,fc.y-210,160,50,5); ctx.fill();
+  ctx.strokeStyle='#CBD5E1'; ctx.lineWidth=3; ctx.stroke();
+  ctx.fillStyle='#475569'; ctx.font='bold 28px system-ui'; ctx.fillText('VACANT LOT',fc.x,fc.y-186);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  CRANE RENDERER  (3×3)
+// ═══════════════════════════════════════════════════════════════
+function renderCrane(cv) {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, CS, CS);
+  const N=3, ty=getTY(N);
+  const P=(c,r)=>isoP(c,r,ty);
+  const bT=P(0,0),bR=P(3,0),bF=P(3,3),bL=P(0,3);
+
+  // Dirt base (same as empty lot)
+  const gl=ctx.createLinearGradient(bT.x,bT.y,bF.x,bF.y);
+  gl.addColorStop(0,'#B8A070'); gl.addColorStop(1,'#A08858');
+  poly(ctx,[bT,bR,bF,bL],gl,'#907848',4);
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(bT.x,bT.y); ctx.lineTo(bR.x,bR.y); ctx.lineTo(bF.x,bF.y); ctx.lineTo(bL.x,bL.y); ctx.closePath(); ctx.clip();
+  for (let i=0; i<40; i++) {
+    const px=bL.x+((i*173)%(bR.x-bL.x)), py=bT.y+((i*113)%(bF.y-bT.y));
+    ctx.fillStyle=i%2===0?'rgba(180,160,120,0.5)':'rgba(90,60,20,0.25)';
+    ctx.beginPath(); ctx.ellipse(px,py,10+(i%8),5+(i%4),((i*37)%180)*Math.PI/180,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  // Scaffolding/foundation
+  const base=P(1.2,1.2);
+  ctx.fillStyle='#94A3B8';
+  ctx.fillRect(base.x-40,base.y-60,80,60);
+  ctx.strokeStyle='#64748B'; ctx.lineWidth=4; ctx.strokeRect(base.x-40,base.y-60,80,60);
+  // Concrete blocks
+  for (let r=0;r<2;r++) for (let c=0;c<2;c++) {
+    ctx.strokeStyle='#475569'; ctx.lineWidth=2;
+    ctx.strokeRect(base.x-38+c*39,base.y-58+r*29,38,28);
+  }
+
+  // ── Tower mast ─────────────────────────────────────────────
+  const mastX=base.x, mastBaseY=base.y-60;
+  const mastH=1400, tw=26;
+  const mastTopY=mastBaseY-mastH;
+
+  // Main mast body (yellow)
+  ctx.fillStyle='#F59E0B';
+  ctx.fillRect(mastX-tw,mastTopY,tw*2,mastH);
+
+  // Lattice bracing
+  ctx.strokeStyle='#D97706'; ctx.lineWidth=4;
+  for (let y=mastTopY; y<mastBaseY; y+=90) {
+    seg(ctx,{x:mastX-tw,y},{x:mastX+tw,y:y+90},'#D97706',4);
+    seg(ctx,{x:mastX+tw,y},{x:mastX-tw,y:y+90},'#D97706',4);
+  }
+  // Mast outline
+  ctx.strokeStyle='#B45309'; ctx.lineWidth=6; ctx.strokeRect(mastX-tw,mastTopY,tw*2,mastH);
+
+  // Warning stripes on mast
+  const strH=80;
+  for (let y=mastTopY; y<mastTopY+strH*8; y+=strH*2) {
+    ctx.fillStyle='rgba(30,30,30,0.5)';
+    ctx.fillRect(mastX-tw,y,tw*2,strH);
+  }
+
+  // ── Horizontal jib (arm) ───────────────────────────────────
+  const jibY=mastTopY+40;
+  const jibRight=mastX+520, jibLeft=mastX-220;
+  ctx.fillStyle='#F59E0B';
+  ctx.fillRect(jibLeft,jibY-18,jibRight-jibLeft,36);
+  ctx.strokeStyle='#B45309'; ctx.lineWidth=6; ctx.strokeRect(jibLeft,jibY-18,jibRight-jibLeft,36);
+  // Jib lattice
+  ctx.strokeStyle='#D97706'; ctx.lineWidth=3;
+  for (let x=jibLeft+30; x<jibRight; x+=80) {
+    seg(ctx,{x,y:jibY-16},{x:x+40,y:jibY+16},'#D97706',3);
+    seg(ctx,{x:x+40,y:jibY-16},{x,y:jibY+16},'#D97706',3);
+  }
+
+  // Counterweight
+  ctx.fillStyle='#475569';
+  ctx.fillRect(jibLeft-10,jibY-18,100,55);
+  ctx.strokeStyle='#334155'; ctx.lineWidth=4; ctx.strokeRect(jibLeft-10,jibY-18,100,55);
+  ctx.fillStyle='#64748B'; ctx.fillRect(jibLeft+10,jibY-10,60,20);
+
+  // Cable & hook
+  const hookX=mastX+380, cableTopY=jibY+18, cableLen=260;
+  seg(ctx,{x:hookX,y:cableTopY},{x:hookX,y:cableTopY+cableLen},'#CBD5E1',5);
+  ctx.strokeStyle='#94A3B8'; ctx.lineWidth=9;
+  ctx.beginPath(); ctx.arc(hookX,cableTopY+cableLen,18,0.1,Math.PI+0.1); ctx.stroke();
+  // Hook weight
+  ctx.fillStyle='#64748B';
+  ctx.fillRect(hookX-15,cableTopY+cableLen-10,30,20);
+
+  // Support cables
+  ctx.strokeStyle='#94A3B8'; ctx.lineWidth=3; ctx.setLineDash([12,6]);
+  seg(ctx,{x:mastX,y:mastTopY+10},{x:jibRight,y:jibY-14},'#94A3B8',3);
+  seg(ctx,{x:mastX,y:mastTopY+10},{x:jibLeft,y:jibY-14},'#94A3B8',3);
+  ctx.setLineDash([]);
+
+  // Beacon
+  ctx.fillStyle='#FF4444';
+  ctx.beginPath(); ctx.arc(mastX,mastTopY-8,12,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,68,68,0.35)';
+  ctx.beginPath(); ctx.arc(mastX,mastTopY-8,24,0,Math.PI*2); ctx.fill();
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  DISPATCH
+// ═══════════════════════════════════════════════════════════════
+function renderSprite(cv, cfg) {
+  switch(cfg.type) {
+    case 'building':  renderBuilding(cv, cfg);  break;
+    case 'tile':      renderFlatTile(cv, cfg);   break;
+    case 'road':      renderRoadTile(cv, cfg);   break;
+    case 'tree':      renderTree(cv, cfg);        break;
+    case 'bush':      renderBush(cv);             break;
+    case 'park':      renderPark(cv);             break;
+    case 'emptyLot':  renderEmptyLot(cv);         break;
+    case 'crane':     renderCrane(cv);            break;
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  CATEGORIES CONFIG  (25 sprites)
+// ═══════════════════════════════════════════════════════════════
+const CATEGORIES = [
+  {
+    title: '🏢 Immeubles de bureaux (3×3)',
+    sprites: [
+      { type:'building', file:'building-xs.png', label:'XS  <50M€',
+        N:3, wallH:210, wall:'#7A9E72', roof:'#3D4A38', win:'#FFF5B8', trim:'#D4A840', floors:2, winCols:2, decor:'dome',
+        texture:'brick' },
+      { type:'building', file:'building-sm.png', label:'SM  50–150M€',
+        N:3, wallH:320, wall:'#C4734B', roof:'#7B2D2D', win:'#FFE88A', trim:'#F5C542', floors:3, winCols:3, decor:'ac' },
+      { type:'building', file:'building-md.png', label:'MD  150–300M€',
+        N:3, wallH:450, wall:'#4A7FA8', roof:'#1E5040', win:'#C8EEFF', trim:'#38BDF8', floors:4, winCols:3, decor:'tanks',
+        texture:'glass_curtain' },
+      { type:'building', file:'building-lg.png', label:'LG  300–500M€',
+        N:3, wallH:600, wall:'#B8823A', roof:'#2C4A7C', win:'#FFE88A', trim:'#F5C542', floors:5, winCols:3, decor:'terrace',
+        texture:'panel_grid', belt:0.62, beltColor:'#1E3560' },
+      { type:'building', file:'building-xl.png', label:'XL  >500M€',
+        N:3, wallH:840, wall:'#3A5880', roof:'#0F2340', win:'#C8EEFF', trim:'#38BDF8', floors:7, winCols:4, decor:'spire',
+        texture:'glass_curtain' },
+    ]
+  },
+  {
+    title: '🏛️ Civic (3×3)',
+    sprites: [
+      { type:'building', file:'townhall.png', label:'Town Hall',
+        N:3, wallH:500, wall:'#EDE5D0', roof:'#2FA7B8', win:'#C8EEFF', trim:'#F5C542', floors:4, winCols:3, decor:'dome_grand',
+        texture:'ashlar', belt:0.45, beltColor:'#1A7A88' },
+    ]
+  },
+  {
+    title: '🏪 Commerce',
+    sprites: [
+      { type:'building', file:'shop-kiosk.png', label:'Kiosque (2×2)',
+        N:2, wallH:200, wall:'#D07840', roof:'#B02820', win:'#FFE8A0', trim:'#F5C542', floors:2, winCols:2, decor:'awning',
+        texture:'brick' },
+      { type:'building', file:'shop-store.png', label:'Boutique (2×2)',
+        N:2, wallH:340, wall:'#C8D4DC', roof:'#2C3E50', win:'#A8D8F0', trim:'#D0E8F8', floors:3, winCols:3, decor:'signage',
+        texture:'glass_curtain' },
+      { type:'building', file:'shop-mall.png', label:'Mall (3×3)',
+        N:3, wallH:420, wall:'#D8E0E8', roof:'#3C3C3C', win:'#78C8D8', trim:'#F5C542', floors:3, winCols:4, decor:'terrace',
+        texture:'panel_grid' },
+    ]
+  },
+  {
+    title: '📚 Bibliothèques',
+    sprites: [
+      { type:'building', file:'library-sm.png', label:'Biblio SM (2×2)',
+        N:2, wallH:280, wall:'#C8A870', roof:'#4A7A4A', win:'#FFD080', trim:'#8B5E28', floors:2, winCols:2, decor:'dome',
+        texture:'ashlar' },
+      { type:'building', file:'library-md.png', label:'Biblio MD (2×2)',
+        N:2, wallH:380, wall:'#AFA090', roof:'#4A5568', win:'#FFFAE8', trim:'#B87333', floors:3, winCols:3, decor:'tanks',
+        texture:'ashlar' },
+      { type:'building', file:'library-lg.png', label:'Biblio LG (3×3)',
+        N:3, wallH:550, wall:'#F0EBE0', roof:'#5B8C5A', win:'#FFD060', trim:'#8B5E28', floors:4, winCols:3, decor:'dome_grand',
+        texture:'ashlar', belt:0.50, beltColor:'#7B5E30' },
+    ]
+  },
+  {
+    title: '🌿 Nature',
+    sprites: [
+      { type:'tree', file:'tree-sm.png', label:'Arbre SM (1×1)', size:'sm' },
+      { type:'tree', file:'tree-lg.png', label:'Arbre LG (1×1)', size:'lg' },
+      { type:'bush', file:'bush.png',    label:'Buisson (1×1)' },
+      { type:'park', file:'park.png',    label:'Parc (2×2)' },
+    ]
+  },
+  {
+    title: '🛣️ Routes & Sols',
+    sprites: [
+      { type:'tile', file:'ground-tile.png',    label:'Terrain (1×1)',  N:1, fill:'#8B6F4E', texture:'dirt' },
+      { type:'tile', file:'tile-concrete.png',  label:'Béton (1×1)',    N:1, fill:'#9CA3AF', texture:'concrete' },
+      { type:'tile', file:'tile-grass.png',     label:'Herbe (1×1)',    N:1, fill:'#5A9B4A', texture:'grass' },
+      { type:'road', file:'road-straight-1.png', label:'Route ↙↗',     dir:'col' },
+      { type:'road', file:'road-straight-2.png', label:'Route ↘↖',     dir:'row' },
+      { type:'road', file:'road-cross.png',     label:'Carrefour ✕',   dir:'cross' },
+      { type:'road', file:'road-turn.png',      label:'Virage ↙↖',     dir:'turn' },
+    ]
+  },
+  {
+    title: '🏗️ Chantiers (3×3)',
+    sprites: [
+      { type:'emptyLot', file:'empty-lot.png', label:'Terrain vague' },
+      { type:'crane',    file:'crane.png',     label:'Grue' },
+    ]
+  },
+];
+
+
+// ═══════════════════════════════════════════════════════════════
+//  UI — render categories
+// ═══════════════════════════════════════════════════════════════
+const root = document.getElementById('root');
+
+CATEGORIES.forEach(cat => {
+  const section = document.createElement('div');
+  section.className = 'category';
+  section.innerHTML = `<div class="cat-title">${cat.title}</div>`;
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+
+  cat.sprites.forEach(cfg => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<h3>${cfg.label}</h3>`;
+
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = CS;
+    cv.className = 'preview';
+    card.appendChild(cv);
+
+    const btn = document.createElement('button');
+    btn.textContent = `⬇ ${cfg.file}`;
+    btn.onclick = () => {
+      const a = document.createElement('a');
+      a.download = cfg.file;
+      a.href = cv.toDataURL('image/png');
+      a.click();
+    };
+    card.appendChild(btn);
+    grid.appendChild(card);
+
+    // Render immediately (no re-render on download to keep textures stable)
+    renderSprite(cv, cfg);
+  });
+
+  section.appendChild(grid);
+  root.appendChild(section);
+});
+</script>
+</body>
+</html>
