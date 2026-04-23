@@ -649,7 +649,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
     // Crane for draft projects
     if (state === 'construction') {
-      const craneSprite = getSprite('crane');
+      const craneSprite = getSprite('construction_1x1');
       if (craneSprite) {
         const craneH = bh * 0.6;
         const craneW = craneH * (craneSprite.width / craneSprite.height);
