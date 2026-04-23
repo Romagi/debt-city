@@ -397,6 +397,19 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   road_end_w: [1, 1],
   tile_sidewalk: [1, 1],
   tile_sidewalk_flat: [1, 1],
+  // ── Ground tiles ─────────────────────────────────────────────────────────
+  tile_grass: [1, 1],        // sprite key utilisé dans drawGrid
+  // ── Road sprite keys (distincts des variantes road_straight_ns etc.) ─────
+  road_straight_1: [1, 1],
+  road_straight_2: [1, 1],
+  road_turn:       [1, 1],   // legacy alias
+  road_turn_1:     [1, 1],
+  road_turn_2:     [1, 1],
+  road_turn_3:     [1, 1],
+  road_t_1:        [1, 1],
+  road_t_2:        [1, 1],
+  road_end_1:      [1, 1],
+  road_end_2:      [1, 1],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],
