@@ -1,6 +1,8 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { CityState, CityBuilding, CityDistrict, ClickTarget, CellType } from '../types/portfolio';
 import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid, getDistrictForProject, getDistrictAt, fitsInDistrict, canPlace, DECORATION_TYPES } from '../types/portfolio';
+import { getRoadVariant } from './roadAutoTile';
+import type { RoadVariant } from './roadAutoTile';
 import { formatMoney } from './utils';
 
 // ─── Color palettes ───
@@ -49,102 +51,124 @@ const LIBRARY_SIZES: Record<string, { lw: number; lh: number }> = {
 const EMPTY_LOT_W = 24;
 const EMPTY_LOT_H = 10;
 
-/** Per-sprite rendering calibration.
- *  All sprites are 2048×2048, generated at 6× scale, anchored at the CENTRE of
- *  the footprint diamond (gridToScreen(col + N/2, row + N/2)).
+/** Per-sprite rendering calibration — SOUTH-TIP anchor convention.
  *
- *  baseRatio: fraction of sprite width = iso base width / CS
- *    N=3 → 2×3×192 / 2048 = 0.5625
- *    N=2 → 2×2×192 / 2048 = 0.375
- *    N=1 → 2×1×192 / 2048 = 0.1875
- *
- *  yOff formula (derived from sprite geometry):
- *    In the sprite, bL/bR corners (front face foot) sit at y = FRONT_Y - N×DV = 1920 - N×114.
- *    These should appear at the game anchor (y = 0 relative to anchor).
- *    Setting top_sprite + pixel_offset = 0:
- *      38×yOff = (128 + N×114) / 6   →   yOff = (128 + N×114) / 228
- *    N=3 → (128 + 342) / 228 = 470/228 ≈ 2.06
- *    N=2 → (128 + 228) / 228 = 356/228 ≈ 1.56
- *    N=1 → (128 + 114) / 228 = 242/228 ≈ 1.06                         */
+ *  Valeurs calibrées visuellement via /calibrate.html (2025-04) :
+ *    1×1  → yOff: 0.50, xOff:  0.00  (grass, routes, building_xs, shop_kiosk)
+ *    2×1  → yOff: 0.46, xOff: -0.24  (building_sm/md, shop_store, construction_2x1)
+ *    2×2  → yOff: 0.43, xOff:  0.00  (building_lg/xl, townhall, shop_mall, library_md, construction_2x2)
+ */
 const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: number }> = {
-  // ── 3×3 buildings (offices + civic + mall + library LG) ─────────
-  building_xs: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  building_sm: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  building_md: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  building_lg: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  building_xl: { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  townhall:    { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  shop_lg:     { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  library_lg:  { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  // ── 2×2 buildings (shops + library SM/MD + park) ─────────────────
-  shop_sm:     { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
-  shop_md:     { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
-  library_sm:  { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
-  library_md:  { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
-  park:        { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
-  // ── 1×1 decorations + tiles + roads ──────────────────────────────
-  // N=1 exception: the decoration anchor gridToScreen(col+0.5, row+0.5) is 19 px
-  // BELOW the underlying tile center gridToScreen(col, row). bL/bR must appear
-  // 19 px above the anchor (offset -19) to align with the tile surface.
-  // → yOff = 0.56  (bL/bR at anchor − 19 = tile center)
-  tree_sm:         { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tree_lg:         { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  bush:            { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  ground:          { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tile_concrete:   { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tile_grass:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  road_straight_1: { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  road_straight_2: { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  road_cross:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  road_turn:       { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tile_sidewalk:   { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  // ── 3×3 chantier ─────────────────────────────────────────────────
-  empty_lot:       { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
-  crane:           { baseRatio: 0.5625, yOff: 2.06, xOff: 0 },
+  // ── Footprint 1×1 ────────────────────────────────────────────────────────
+  building_xs:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×1024
+  shop_kiosk:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×768
+  construction_1x1: { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×512
+  tile_grass:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×512 ✅ calibré
+  // Roads 1×1 (même calibration que tile_grass — tuile plate)
+  road_straight_1:  { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_straight_2:  { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_cross:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_turn:        { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_turn_1:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_turn_2:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_turn_3:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_t_1:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_t_2:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_end_1:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_end_2:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  // ── Footprint 2×1 ────────────────────────────────────────────────────────
+  building_sm:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280  ✅ calibré
+  building_md:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280
+  shop_store:       { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280
+  construction_2x1: { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1024
+  // ── Footprint 2×2 ────────────────────────────────────────────────────────
+  building_lg:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1280
+  building_xl:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1536 ✅ calibré
+  townhall:         { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1280
+  shop_mall:        { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1280
+  library_md:       { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1024
+  construction_2x2: { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1024
+  // ── Legacy sprites (2048×2048, non migrés) ───────────────────────────────
+  tile_sidewalk_flat: { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tile_sidewalk:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tree_sm:            { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tree_lg:            { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  bush:               { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  ground:             { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  tile_concrete:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
+  park:               { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
 };
 
-/** Crop constants for 1×1 tile sprites (2048×2048, 6× scale, FRONT_Y=1920).
- *  The tile diamond sits at x:[832–1216], y:[1692–1920] in the sprite canvas. */
-const SPRITE_DU  = ISO_TILE_W * 3;                // 192  (half-diamond width at 6×)
-const SPRITE_DV  = ISO_TILE_H * 3;                // 114  (half-diamond height at 6×)
-const TILE1_SX   = 1024 - SPRITE_DU;              // 832
-const TILE1_SY   = 1920 - 2 * SPRITE_DV;          // 1692
-const TILE1_SW   = 2 * SPRITE_DU;                 // 384
-const TILE1_SH   = 2 * SPRITE_DV;                 // 228
+/** Map a RoadVariant to the best available sprite key.
+ *  All new sprites are 512×512 lib format (baseRatio=1.0, yOff=0.5). */
+function getRoadSpriteKey(variant: RoadVariant): SpriteKey {
+  switch (variant) {
+    // Straights
+    case 'road_straight_ew':  return 'road_straight_2';
+    // Cross
+    case 'road_cross':        return 'road_cross';
+    // T-junctions
+    case 'road_t_nse':        return 'road_t_1';
+    case 'road_t_sew':        return 'road_t_1';   // no exact sprite — closest
+    case 'road_t_nsw':        return 'road_t_2';
+    case 'road_t_new':        return 'road_t_2';   // no exact sprite — closest
+    // Turns
+    case 'road_turn_ne':      return 'road_turn_1';
+    case 'road_turn_se':      return 'road_turn_2';
+    case 'road_turn_sw':      return 'road_turn_3';
+    case 'road_turn_nw':      return 'road_turn_1'; // no NW sprite — reuse NE
+    // Dead ends
+    case 'road_end_n':
+    case 'road_end_s':        return 'road_end_1';
+    case 'road_end_e':
+    case 'road_end_w':        return 'road_end_2';
+    // Default: straight NS + isolated
+    default:                  return 'road_straight_1';
+  }
+}
 
 // ─── Sprite system ───
 
 const SPRITE_PATHS = {
-  // Main buildings by size tier (small → large)
-  building_xs: '/sprites/building-xs.png',
-  building_sm: '/sprites/building-sm.png',
-  building_md: '/sprites/building-md.png',
-  building_lg: '/sprites/building-lg.png',
-  building_xl: '/sprites/building-xl.png',
-  // Sub-structures
-  townhall: '/sprites/townhall.png',
-  shop_sm: '/sprites/shop-kiosk.png',
-  shop_md: '/sprites/shop-store.png',
-  shop_lg: '/sprites/shop-mall.png',
-  library_sm: '/sprites/library-sm.png',
-  library_md: '/sprites/library-md.png',
-  library_lg: '/sprites/library-lg.png',
-  // Extras
-  empty_lot: '/sprites/empty-lot.png',
-  crane: '/sprites/crane.png',
-  // Environment
-  ground: '/sprites/ground-tile.png',
-  tile_concrete: '/sprites/tile-concrete.png',
-  tile_grass: '/sprites/tile-grass.png',
-  tree_sm: '/sprites/tree-sm.png',
-  tree_lg: '/sprites/tree-lg.png',
-  bush: '/sprites/bush.png',
-  park: '/sprites/park.png',
+  // ── Main buildings (new lib sprites, 512/768/1024px wide) ─────────────────
+  building_xs: '/sprites/building-xs.png',   // 512×1024  footprint 1×1
+  building_sm: '/sprites/building-sm.png',   // 768×1280  footprint 2×1
+  building_md: '/sprites/building-md.png',   // 768×1280  footprint 2×1
+  building_lg: '/sprites/building-lg.png',   // 1024×1280 footprint 2×2
+  building_xl: '/sprites/building-xl.png',   // 1024×1536 footprint 2×2
+  // ── Sub-structures (new lib sprites) ─────────────────────────────────────
+  townhall:    '/sprites/townhall.png',       // 1024×1280 footprint 2×2
+  shop_kiosk:  '/sprites/shop-kiosk.png',    // 512×768   footprint 1×1
+  shop_store:  '/sprites/shop-store.png',    // 768×1280  footprint 2×1
+  shop_mall:   '/sprites/shop-mall.png',     // 1024×1280 footprint 2×2
+  library_md:  '/sprites/library-md.png',    // 1024×1024 footprint 2×2
+  // ── Construction placeholders (new lib sprites) ───────────────────────────
+  construction_1x1: '/sprites/construction_1x1.png',  // 512×512   footprint 1×1
+  construction_2x1: '/sprites/construction_2x1.png',  // 768×1024  footprint 2×1
+  construction_2x2: '/sprites/construction_2x2.png',  // 1024×1024 footprint 2×2
+  // ── Ground tiles (standalone lib sprites, south-tip anchor) ───────────────
+  tile_grass:         '/sprites/tile-grass.png',
+  tile_sidewalk_flat: '/sprites/tile-concrete.png',  // placeholder until flat sprite arrives
+  // ── Road variants (new lib sprites, 512×512, auto-tiled) ─────────────────
   road_straight_1: '/sprites/road-straight-1.png',
   road_straight_2: '/sprites/road-straight-2.png',
-  road_cross: '/sprites/road-cross.png',
-  road_turn: '/sprites/road-turn.png',
+  road_cross:      '/sprites/road-cross.png',
+  road_turn:       '/sprites/road-turn-1.png',   // legacy alias → turn-1
+  road_turn_1:     '/sprites/road-turn-1.png',
+  road_turn_2:     '/sprites/road-turn-2.png',
+  road_turn_3:     '/sprites/road-turn-3.png',
+  road_t_1:        '/sprites/road-t-1.png',
+  road_t_2:        '/sprites/road-t-2.png',
+  road_end_1:      '/sprites/road-end-1.png',
+  road_end_2:      '/sprites/road-end-2.png',
+  // ── Decorations / objects ─────────────────────────────────────────────────
+  ground:       '/sprites/ground-tile.png',
+  tile_concrete: '/sprites/tile-concrete.png',
   tile_sidewalk: '/sprites/tile-concrete.png',
+  tree_sm:      '/sprites/tree-sm.png',
+  tree_lg:      '/sprites/tree-lg.png',
+  bush:         '/sprites/bush.png',
+  park:         '/sprites/park.png',
 } as const;
 
 type SpriteKey = keyof typeof SPRITE_PATHS;
@@ -206,16 +230,13 @@ interface Props {
 
 const DRAG_THRESHOLD = 4;
 
-/** Map CellType to SpriteKey for decorations */
+/** Map CellType to SpriteKey for decoration objects (Layer 3 — objects).
+ *  Roads and sidewalk are NOT here — they're handled in the ground/overlay layers. */
 const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
   tree_sm: 'tree_sm',
   tree_lg: 'tree_lg',
-  park: 'park',
-  road: 'road_straight_1',
-  road_2: 'road_straight_2',
-  road_cross: 'road_cross',
-  sidewalk: 'tile_sidewalk',
-  bush: 'bush',
+  park:    'park',
+  bush:    'bush',
 };
 
 export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration }: Props) {
@@ -229,6 +250,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
   const lastMoveTimeRef = useRef(0);
   const hoveredCellRef = useRef<{ col: number; row: number } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  // Paint mode: continuous road placement while mouse button is held
+  const paintedCellsRef = useRef(new Set<string>());
 
   // Fix 3 — Pre-sort districts (memoized, not per-frame)
   const sortedDistricts = useMemo(
@@ -292,70 +315,51 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     const th = ISO_TILE_H;
     const drag = dragStateRef.current;
 
-    const concreteSprite = getSprite('tile_concrete');
+    if (grid.districts.length === 0) return;
 
-    // Draw gap cells (between districts) as concrete
-    if (grid.districts.length > 0) {
-      let minCol = Infinity, minRow = Infinity, maxCol = -Infinity, maxRow = -Infinity;
-      for (const d of grid.districts) {
-        minCol = Math.min(minCol, d.col);
-        minRow = Math.min(minRow, d.row);
-        maxCol = Math.max(maxCol, d.col + d.size);
-        maxRow = Math.max(maxRow, d.row + d.size);
-      }
-      // Collect gap cells and sort back-to-front
-      const gapCells: { col: number; row: number }[] = [];
-      for (let row = minRow; row < maxRow; row++) {
-        for (let col = minCol; col < maxCol; col++) {
-          if (!getDistrictAt(grid, col, row)) {
-            gapCells.push({ col, row });
-          }
-        }
-      }
-      gapCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
-      for (const { col, row } of gapCells) {
-        const cell = grid.cells[row]?.[col];
-        if (cell && DECORATION_TYPES.has(cell.type)) continue; // drawn by drawDecorations
-        if (concreteSprite) {
-          const { x, y } = gridToScreen(col, row);
-          ctx.drawImage(concreteSprite, TILE1_SX, TILE1_SY, TILE1_SW, TILE1_SH, x - tw / 2, y - th / 2, tw, th);
-        } else {
-          drawTileDiamond(ctx, col, row, 'rgba(180,170,160,0.08)', 'rgba(180,170,160,0.12)', 0.5);
-        }
-      }
+    // Bounding box of all districts
+    let minCol = Infinity, minRow = Infinity, maxCol = -Infinity, maxRow = -Infinity;
+    for (const d of grid.districts) {
+      minCol = Math.min(minCol, d.col);
+      minRow = Math.min(minRow, d.row);
+      maxCol = Math.max(maxCol, d.col + d.size);
+      maxRow = Math.max(maxRow, d.row + d.size);
     }
 
-    // Render cells inside districts
+    // ── Layer 1: Ground — tile_grass everywhere, road sprites on road cells ──
+    // Collect all cells in bounding box, sort back-to-front (painter's algo)
+    const allCells: { col: number; row: number }[] = [];
+    for (let row = minRow; row < maxRow; row++) {
+      for (let col = minCol; col < maxCol; col++) {
+        allCells.push({ col, row });
+      }
+    }
+    allCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+
+    for (const { col, row } of allCells) {
+      const cell = grid.cells[row]?.[col];
+      let spriteKey: SpriteKey = 'tile_grass';
+      if (cell?.type === 'road') {
+        spriteKey = getRoadSpriteKey(getRoadVariant(grid, col, row));
+      }
+      // Ground tiles: SOUTH-TIP anchor — bottom-center of PNG = south tip of iso diamond.
+      // Convention matches the sprite library: adjacent tiles share edges automatically.
+      const { x: tx, y: ty } = gridToScreen(col + 0.5, row + 0.5);
+      ctx.save();
+      ctx.translate(tx, ty);
+      if (!drawSpriteOnGrid(ctx, spriteKey)) {
+        // Fallback: colored diamond — drawn from the north tip at (0,0)
+        const fill = cell?.type === 'road' ? 'rgba(80,80,100,0.6)' : 'rgba(90,160,60,0.3)';
+        drawTileDiamond(ctx, 0, 0, fill, null, 0, tw, th);
+      }
+      ctx.restore();
+    }
+
+    // ── Layer 2: Hover / drag highlights (diamond overlays on top of ground) ──
     for (const d of grid.districts) {
-      // Collect border cells and sort back-to-front (by row+col for correct overlap)
-      const borderSet = new Set<string>();
-      for (let edge = 0; edge < d.size; edge++) {
-        borderSet.add(`${d.col + edge},${d.row}`);
-        borderSet.add(`${d.col + edge},${d.row + d.size - 1}`);
-        borderSet.add(`${d.col},${d.row + edge}`);
-        borderSet.add(`${d.col + d.size - 1},${d.row + edge}`);
-      }
-      const borderCells = [...borderSet].map(s => { const [c, r] = s.split(',').map(Number); return { col: c, row: r }; });
-      // Sort back-to-front: lower row+col drawn first
-      borderCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
-
-      for (const { col, row } of borderCells) {
-        if (concreteSprite) {
-          const { x, y } = gridToScreen(col, row);
-          // Flat tile: 2:1 ratio, no thickness. Align diamond center to grid point.
-          ctx.drawImage(concreteSprite, TILE1_SX, TILE1_SY, TILE1_SW, TILE1_SH, x - tw / 2, y - th / 2, tw, th);
-        } else {
-          drawTileDiamond(ctx, col, row, 'rgba(180,170,160,0.12)', 'rgba(180,170,160,0.2)', 0.8);
-        }
-      }
-
-      // Draw interior tiles (grass on empty cells, skip border cells already drawn)
-      const grassSprite = getSprite('tile_grass');
-      for (let row = d.row + 1; row < d.row + d.size - 1; row++) {
-        for (let col = d.col + 1; col < d.col + d.size - 1; col++) {
+      for (let row = d.row; row < d.row + d.size; row++) {
+        for (let col = d.col; col < d.col + d.size; col++) {
           const cell = grid.cells[row]?.[col];
-          const isHovered = hCell && hCell.col === col && hCell.row === row;
-          const isOccupied = cell !== null;
 
           // Drag ghost check
           let isDragGhost = false;
@@ -379,45 +383,50 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
             }
           }
 
-          // Check if this cell belongs to the hovered structure
+          // Structure hover check
           const hoveredStruct = hoveredTargetRef.current;
           let isStructureHovered = false;
           if (!drag && hoveredStruct && cell && cell.entityId === hoveredStruct.building.project.id) {
-            // Get the origin cell type to check if it matches the hovered kind
             const oc = cell.originCol != null ? grid.cells[cell.originRow!]?.[cell.originCol!] : cell;
             isStructureHovered = oc?.type === hoveredStruct.kind;
           }
 
+          const isHovered = hCell && hCell.col === col && hCell.row === row;
+
           if (isDragGhost) {
-            drawTileDiamond(ctx, col, row,
-              isDragValid ? 'rgba(100, 200, 100, 0.3)' : 'rgba(255, 80, 80, 0.3)',
-              isDragValid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)', 1);
+            drawTileHighlight(ctx, col, row,
+              isDragValid ? 'rgba(100,200,100,0.3)' : 'rgba(255,80,80,0.3)',
+              isDragValid ? 'rgba(100,200,100,0.6)' : 'rgba(255,80,80,0.6)', 1, tw, th);
           } else if (isStructureHovered) {
-            // Highlight all cells of the hovered building
-            drawTileDiamond(ctx, col, row, 'rgba(100, 200, 255, 0.2)', 'rgba(100, 200, 255, 0.5)', 1);
-          } else if (isHovered && !drag) {
-            drawTileDiamond(ctx, col, row, 'rgba(100, 200, 100, 0.15)', 'rgba(100, 200, 100, 0.3)', 0.5);
-          } else if (!isOccupied) {
-            // Empty cell inside district = grass
-            if (grassSprite) {
-              const { x, y } = gridToScreen(col, row);
-              ctx.drawImage(grassSprite, TILE1_SX, TILE1_SY, TILE1_SW, TILE1_SH, x - tw / 2, y - th / 2, tw, th);
-            } else {
-              drawTileDiamond(ctx, col, row, 'rgba(90, 160, 60, 0.1)', null, 0);
-            }
+            drawTileHighlight(ctx, col, row, 'rgba(100,200,255,0.2)', 'rgba(100,200,255,0.5)', 1, tw, th);
+          } else if (isHovered && !drag && !placementMode) {
+            drawTileHighlight(ctx, col, row, 'rgba(100,200,100,0.15)', 'rgba(100,200,100,0.3)', 0.5, tw, th);
           }
-          // Occupied cells: no ground tile drawn (building renders on top)
         }
       }
     }
 
-    function drawTileDiamond(c: CanvasRenderingContext2D, col: number, row: number, fill: string | null, stroke: string | null, lineW: number) {
+    /** Draw a diamond highlight at grid (col,row). Coordinates are absolute (not pre-translated). */
+    function drawTileHighlight(c: CanvasRenderingContext2D, col: number, row: number, fill: string | null, stroke: string | null, lineW: number, tw: number, th: number) {
       const { x, y } = gridToScreen(col, row);
       c.beginPath();
       c.moveTo(x, y - th / 2);
       c.lineTo(x + tw / 2, y);
       c.lineTo(x, y + th / 2);
       c.lineTo(x - tw / 2, y);
+      c.closePath();
+      if (fill) { c.fillStyle = fill; c.fill(); }
+      if (stroke) { c.strokeStyle = stroke; c.lineWidth = lineW; c.stroke(); }
+    }
+
+    /** Draw a diamond with SOUTH TIP at (0, 0) in translated context (fallback when sprite not loaded).
+     *  The context is expected to be pre-translated to the tile's south tip (south-tip anchor). */
+    function drawTileDiamond(c: CanvasRenderingContext2D, _col: number, _row: number, fill: string | null, stroke: string | null, lineW: number, tw: number, th: number) {
+      c.beginPath();
+      c.moveTo(0, -th);           // North tip
+      c.lineTo(tw / 2, -th / 2); // East tip
+      c.lineTo(0, 0);             // South tip (anchor)
+      c.lineTo(-tw / 2, -th / 2);// West tip
       c.closePath();
       if (fill) { c.fillStyle = fill; c.fill(); }
       if (stroke) { c.strokeStyle = stroke; c.lineWidth = lineW; c.stroke(); }
@@ -429,12 +438,36 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     const tw = ISO_TILE_W;
     const th = ISO_TILE_H;
 
-    // Collect decoration origin cells and sort back-to-front
+    // ── Layer 2: Overlay — sidewalk flat (on top of ground, below objects) ──
+    const sidewalkCells: { col: number; row: number }[] = [];
+    for (let r = 0; r < grid.size; r++) {
+      for (let c = 0; c < grid.size; c++) {
+        if (grid.cells[r]?.[c]?.type === 'sidewalk') sidewalkCells.push({ col: c, row: r });
+      }
+    }
+    sidewalkCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+    for (const { col, row } of sidewalkCells) {
+      const { x, y } = gridToScreen(col + 0.5, row + 0.5);
+      ctx.save();
+      ctx.translate(x, y);
+      drawSpriteOnGrid(ctx, 'tile_sidewalk_flat');
+      ctx.restore();
+    }
+
+    // ── Layer 3: Objects — decoration sprites (trees, park, bush…) ──
+    // Roads and sidewalks are excluded — they live in layers 1 and 2.
     const decos: { col: number; row: number; type: CellType }[] = [];
     for (let r = 0; r < grid.size; r++) {
       for (let c = 0; c < grid.size; c++) {
         const cell = grid.cells[r]?.[c];
-        if (cell && DECORATION_TYPES.has(cell.type) && cell.originCol == null && cell.originRow == null) {
+        if (
+          cell &&
+          DECORATION_TYPES.has(cell.type) &&
+          cell.type !== 'road' &&
+          cell.type !== 'sidewalk' &&
+          cell.originCol == null &&
+          cell.originRow == null
+        ) {
           decos.push({ col: c, row: r, type: cell.type });
         }
       }
@@ -444,10 +477,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     for (const d of decos) {
       const spriteKey = DECO_SPRITE_MAP[d.type];
       if (!spriteKey) continue;
-      const sprite = getSprite(spriteKey);
-      if (!sprite) continue;
       const [fw, fh] = STRUCTURE_SIZES[d.type] ?? [1, 1];
-      // Center of footprint
       const cx = d.col + fw / 2;
       const cy = d.row + fh / 2;
       const { x, y } = gridToScreen(cx, cy);
@@ -457,17 +487,36 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       ctx.restore();
     }
 
-    // Ghost preview for placement mode
+    // ── Ghost preview for placement mode ─────────────────────────────
     if (placementMode && !placementMode.eraser && hCell) {
       const [pw, ph] = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1];
       const gc = hCell.col - Math.floor(pw / 2);
       const gr = hCell.row - Math.floor(ph / 2);
       const district = getDistrictAt(grid, hCell.col, hCell.row);
-      // Valid if: fits in district (if inside one), OR is in a gap area; and cells are free
       const fitsDistrict = district ? fitsInDistrict(district, gc, gr, pw, ph) : true;
-      const valid = fitsDistrict && canPlace(grid, gc, gr, pw, ph);
+      // Roads can always be placed (no district restriction), other decos need district
+      const valid = placementMode.deco === 'road'
+        ? canPlace(grid, gc, gr, pw, ph)
+        : fitsDistrict && canPlace(grid, gc, gr, pw, ph);
 
-      // Draw ghost tiles
+      // Ghost sprite key — road uses a straight EW preview
+      const ghostSpriteKey: SpriteKey | undefined = placementMode.deco === 'road'
+        ? 'road_straight_2'
+        : DECO_SPRITE_MAP[placementMode.deco];
+
+      if (ghostSpriteKey) {
+        // Draw sprite at 60% alpha
+        const cx = gc + pw / 2;
+        const cy = gr + ph / 2;
+        const { x, y } = gridToScreen(cx, cy);
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        ctx.translate(x, y);
+        drawSpriteOnGrid(ctx, ghostSpriteKey);
+        ctx.restore();
+      }
+
+      // Diamond footprint outline (valid / invalid colour)
       for (let dc = gc; dc < gc + pw; dc++) {
         for (let dr = gr; dr < gr + ph; dr++) {
           const { x, y } = gridToScreen(dc, dr);
@@ -477,25 +526,12 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           ctx.lineTo(x, y + th / 2);
           ctx.lineTo(x - tw / 2, y);
           ctx.closePath();
-          ctx.fillStyle = valid ? 'rgba(100, 200, 100, 0.3)' : 'rgba(255, 80, 80, 0.3)';
+          ctx.fillStyle = valid ? 'rgba(80,220,80,0.18)' : 'rgba(220,60,60,0.18)';
           ctx.fill();
-          ctx.strokeStyle = valid ? 'rgba(100, 200, 100, 0.6)' : 'rgba(255, 80, 80, 0.6)';
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = valid ? 'rgba(80,220,80,0.7)' : 'rgba(220,60,60,0.7)';
+          ctx.lineWidth = 1.5;
           ctx.stroke();
         }
-      }
-
-      // Draw ghost sprite at 50% opacity
-      const spriteKey = DECO_SPRITE_MAP[placementMode.deco];
-      if (spriteKey && valid) {
-        const cx = gc + pw / 2;
-        const cy = gr + ph / 2;
-        const { x, y } = gridToScreen(cx, cy);
-        ctx.save();
-        ctx.globalAlpha = 0.5;
-        ctx.translate(x, y);
-        drawSpriteOnGrid(ctx, spriteKey);
-        ctx.restore();
       }
     }
 
@@ -531,25 +567,25 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
   function drawDistrict(ctx: CanvasRenderingContext2D, district: CityDistrict) {
     for (const building of district.buildings) {
-      // 3. Library (behind, upper-left)
+      // 3. Library (behind, upper-left) — single model: library_md (2×2)
       if (building.project.documents.length > 0) {
         drawLibrary(ctx, building);
       } else {
-        drawEmptyLot(ctx, building.libraryPos);
+        drawEmptyLot(ctx, building.libraryPos, 'construction_2x2');
       }
-      // 4. Townhall (left)
+      // 4. Townhall / mairie (left) — 2×2
       if (building.project.covenants.length > 0) {
         drawTownhall(ctx, building);
       } else {
-        drawEmptyLot(ctx, building.townhallPos);
+        drawEmptyLot(ctx, building.townhallPos, 'construction_2x2');
       }
       // 5. Main building (center)
       drawBuilding(ctx, building);
-      // 6. Shop (right, front-most)
+      // 6. Shop / syndicate (right, front-most) — size varies
       if (building.syndicateSize !== 'none') {
         drawShop(ctx, building);
       } else {
-        drawEmptyLot(ctx, building.shopPos);
+        drawEmptyLot(ctx, building.shopPos, 'construction_1x1');
       }
     }
 
@@ -700,8 +736,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.save();
     ctx.translate(shopPos.x, shopPos.y);
 
-    // Sprite by size
-    const spriteKey: SpriteKey = syndicateSize === 'mall' ? 'shop_lg' : syndicateSize === 'shop' ? 'shop_md' : 'shop_sm';
+    // Sprite by size — keys match new lib sprites
+    const spriteKey: SpriteKey = syndicateSize === 'mall' ? 'shop_mall' : syndicateSize === 'shop' ? 'shop_store' : 'shop_kiosk';
     if (!drawSpriteOnGrid(ctx, spriteKey)) {
       drawIsoBox(ctx, sw, sh, SHOP_COLORS.base, SHOP_COLORS.side, SHOP_COLORS.top);
     }
@@ -732,8 +768,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.save();
     ctx.translate(libraryPos.x, libraryPos.y);
 
-    // Sprite by size
-    const spriteKey: SpriteKey = librarySize === 'large' ? 'library_lg' : librarySize === 'medium' ? 'library_md' : 'library_sm';
+    // Single library model — library_md (1024×1024, footprint 2×2)
+    const spriteKey: SpriteKey = 'library_md';
     if (!drawSpriteOnGrid(ctx, spriteKey)) {
       drawIsoBox(ctx, lw, lh, LIBRARY_COLORS.base, LIBRARY_COLORS.side, LIBRARY_COLORS.top);
     }
@@ -773,17 +809,22 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.closePath(); ctx.fill(); ctx.stroke();
   }
 
-  /** Draw a sprite centered in its grid footprint.
-   *  Scale = fit sprite width into footprint iso width (cols * ISO_TILE_W).
-   *  Sprite is always horizontally centered on the grid origin point.
-   *  yOff controls vertical anchor (higher = base sits lower on the ground). */
+  /** Draw a sprite anchored at the SOUTH TIP of its footprint (pre-translated context).
+   *
+   *  footprintW = (footCols + footRows) × ISO_TILE_W/2
+   *    → screen width of the iso diamond for any N×M footprint.
+   *    → for new lib sprites (baseRatio=1.0) gives scale=0.125 regardless of size.
+   *
+   *  yOff: sprite_bottom = anchor_y + ISO_TILE_H × yOff.
+   *    yOff=0.5 → cube bottom sits ISO_TILE_H/2 = 19px below south tip (matches tile_grass). */
   function drawSpriteOnGrid(ctx: CanvasRenderingContext2D, spriteKey: SpriteKey) {
     const sprite = getSprite(spriteKey);
     if (!sprite) return false;
-    const [footCols] = STRUCTURE_SIZES[spriteKey] ?? [2, 2];
-    const footprintW = footCols * ISO_TILE_W;
+    const [footCols, footRows] = STRUCTURE_SIZES[spriteKey] ?? [2, 2];
+    // Diamond screen width for any N×M footprint: (N+M) × half-tile-width
+    const footprintW = (footCols + footRows) * (ISO_TILE_W / 2);
     const anchor = SPRITE_ANCHOR[spriteKey] ?? { baseRatio: 0.8, yOff: 0.8, xOff: 0 };
-    // Scale so the iso BASE of the sprite (not full width) fills the footprint
+    // Scale so the iso BASE width of the sprite fills the footprint diamond width
     const baseW = sprite.width * anchor.baseRatio;
     const scale = footprintW / baseW;
     const sw = sprite.width * scale;
@@ -792,13 +833,30 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     return true;
   }
 
-  function drawEmptyLot(ctx: CanvasRenderingContext2D, pos: { x: number; y: number }) {
-    const w = EMPTY_LOT_W;
-    const h = EMPTY_LOT_H;
+  /** Draw an empty lot placeholder.
+   *  If a construction sprite key is provided, it is drawn first (at 80% alpha).
+   *  Falls back to a dashed diamond outline when the sprite isn't loaded yet. */
+  function drawEmptyLot(
+    ctx: CanvasRenderingContext2D,
+    pos: { x: number; y: number },
+    constructionKey?: SpriteKey,
+  ) {
     ctx.save();
     ctx.translate(pos.x, pos.y);
 
-    // Dashed diamond outline
+    // Try the construction sprite first
+    if (constructionKey) {
+      ctx.globalAlpha = 0.8;
+      if (drawSpriteOnGrid(ctx, constructionKey)) {
+        ctx.restore();
+        return;
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Fallback: dashed diamond outline
+    const w = EMPTY_LOT_W;
+    const h = EMPTY_LOT_H;
     ctx.setLineDash([3, 3]);
     ctx.strokeStyle = 'rgba(255,255,255,0.2)';
     ctx.lineWidth = 1;
@@ -811,12 +869,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.lineTo(-w / 2, w / 4);
     ctx.closePath();
     ctx.stroke();
-
-    // Subtle fill
     ctx.fillStyle = 'rgba(255,255,255,0.03)';
     ctx.fill();
-
-    // "+" label
     ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.font = 'bold 12px monospace';
@@ -981,6 +1035,22 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     if (placementMode) {
       dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, camX: cameraRef.current.x, camY: cameraRef.current.y, moved: false };
       dragStateRef.current = null;
+      // Road paint mode: place first tile immediately on mousedown
+      if (!placementMode.eraser && placementMode.deco === 'road') {
+        paintedCellsRef.current.clear();
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const cam = cameraRef.current;
+          const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+          const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+          const { col, row } = screenToGrid(wx, wy);
+          const key = `${col},${row}`;
+          paintedCellsRef.current.add(key);
+          const district = getDistrictAt(cityState.grid, col, row);
+          onPlaceDecoration?.(col, row, district?.projectId ?? '');
+        }
+      }
       return;
     }
     const target = findTargetAt(e.clientX, e.clientY);
@@ -1034,6 +1104,26 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           }
         }
         needsRedrawRef.current = true;
+      } else if (drag.moved && placementMode?.deco === 'road' && !placementMode.eraser) {
+        // Road paint mode — paint cells as mouse drags
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const cam = cameraRef.current;
+          const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+          const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+          const cell = screenToGrid(wx, wy);
+          if (cell.col >= 0 && cell.col < GRID_SIZE && cell.row >= 0 && cell.row < GRID_SIZE) {
+            hoveredCellRef.current = cell;
+            const key = `${cell.col},${cell.row}`;
+            if (!paintedCellsRef.current.has(key)) {
+              paintedCellsRef.current.add(key);
+              const district = getDistrictAt(cityState.grid, cell.col, cell.row);
+              onPlaceDecoration?.(cell.col, cell.row, district?.projectId ?? '');
+            }
+          }
+        }
+        needsRedrawRef.current = true;
       } else if (drag.moved) {
         // Camera pan mode
         cameraRef.current = { ...cameraRef.current, x: drag.camX + dx, y: drag.camY + dy };
@@ -1074,26 +1164,34 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     const drag = dragRef.current;
     const ds = dragStateRef.current;
 
-    // Placement mode: place or remove decoration on click
-    if (placementMode && drag.active && !drag.moved) {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        const cam = cameraRef.current;
-        const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
-        const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
-        const { col, row } = screenToGrid(wx, wy);
+    // Placement mode: place or remove decoration on click (non-drag)
+    if (placementMode && drag.active) {
+      // Always clear paint state on mouseup
+      paintedCellsRef.current.clear();
 
-        if (placementMode.eraser) {
-          onRemoveDecoration?.(col, row);
-        } else {
-          const [pw, ph] = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1];
-          const gc = col - Math.floor(pw / 2);
-          const gr = row - Math.floor(ph / 2);
-          const district = getDistrictAt(cityState.grid, col, row);
-          onPlaceDecoration?.(gc, gr, district?.projectId ?? '');
+      if (!drag.moved) {
+        // Single click (no drag) — place or remove
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const cam = cameraRef.current;
+          const wx = (e.clientX - rect.left - rect.width / 2 - cam.x) / cam.zoom;
+          const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
+          const { col, row } = screenToGrid(wx, wy);
+
+          if (placementMode.eraser) {
+            onRemoveDecoration?.(col, row);
+          } else if (placementMode.deco !== 'road') {
+            // Road was already placed on mousedown; skip re-placing other decos
+            const [pw, ph] = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1];
+            const gc = col - Math.floor(pw / 2);
+            const gr = row - Math.floor(ph / 2);
+            const district = getDistrictAt(cityState.grid, col, row);
+            onPlaceDecoration?.(gc, gr, district?.projectId ?? '');
+          }
         }
       }
+      // Drag case (road paint): tiles were placed incrementally via mousemove, nothing else to do
       dragRef.current = { ...drag, active: false };
       needsRedrawRef.current = true;
       return;

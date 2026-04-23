@@ -13,13 +13,13 @@ import CovenantModal from './modals/CovenantModal';
 import TermModal from './modals/TermModal';
 import AllocationModal from './modals/AllocationModal';
 import DocumentModal from './modals/DocumentModal';
-import DecorationPalette from './panels/DecorationPalette';
+import Toolbar from './panels/Toolbar';
 import LandingScreen from './screens/LandingScreen';
 import { mockPortfolio } from './api/mock-data';
 import { portfolioReducer } from './state/portfolio-reducer';
 import { buildCityState } from './city/utils';
 import { useAutoSave } from './storage/useAutoSave';
-import type { Portfolio, ClickTarget, Borrower, Project, Tranche, Lender, Covenant, CellType } from './types/portfolio';
+import type { Portfolio, ClickTarget, Borrower, Project, Tranche, Lender, Covenant } from './types/portfolio';
 import type { PlacementMode } from './city/CityCanvas';
 
 // ─── Modal state ───
@@ -135,13 +135,11 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
         />
       )}
 
-      <DecorationPalette
-        selectedDeco={placementMode && !placementMode.eraser ? placementMode.deco : null}
-        eraserActive={placementMode?.eraser ?? false}
-        onSelect={(deco: CellType | null) => setPlacementMode(deco ? { deco, eraser: false } : null)}
-        onToggleEraser={() => setPlacementMode(prev =>
-          prev?.eraser ? null : { deco: 'tree_sm', eraser: true }
-        )}
+      <Toolbar
+        placementMode={placementMode}
+        onSelectItem={(deco) => setPlacementMode({ deco, eraser: false })}
+        onErase={() => setPlacementMode({ deco: 'tree_sm', eraser: true })}
+        onCancel={() => setPlacementMode(null)}
       />
 
       <PortfolioOverview portfolio={portfolio} />
@@ -178,7 +176,7 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
 
 const styles: Record<string, React.CSSProperties> = {
   app: { position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#0A0F19' },
-  fab: { position: 'absolute', bottom: 64, left: 20, display: 'flex', gap: 8, zIndex: 10 },
+  fab: { position: 'absolute', bottom: 24, left: 20, display: 'flex', gap: 8, zIndex: 10 },
   fabBtn: { padding: '8px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#CCC', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' },
   fabBtnPrimary: { background: 'rgba(74,144,217,0.3)', borderColor: 'rgba(74,144,217,0.5)', color: '#6AB0F0' },
   saveBar: { position: 'absolute', top: 16, right: 16, display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 },

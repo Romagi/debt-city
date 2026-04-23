@@ -102,10 +102,30 @@ export async function loadSession(
 
   try {
     const portfolio = JSON.parse(raw) as Portfolio;
-    return { success: true, portfolio };
+    return { success: true, portfolio: migratePortfolio(portfolio) };
   } catch {
     return { success: false, error: 'Sauvegarde corrompue' };
   }
+}
+
+/**
+ * Migrate saved portfolio data to the current schema.
+ * — v1→v2: road_2 and road_cross are now handled by auto-tiling;
+ *           all road variants collapse to a single 'road' CellType.
+ */
+function migratePortfolio(portfolio: Portfolio): Portfolio {
+  if (!portfolio.grid?.cells) return portfolio;
+  const newCells = portfolio.grid.cells.map(row =>
+    row.map(cell => {
+      if (!cell) return null;
+      // @ts-expect-error — legacy types no longer in CellType union
+      if (cell.type === 'road_2' || cell.type === 'road_cross') {
+        return { ...cell, type: 'road' as const };
+      }
+      return cell;
+    }),
+  );
+  return { ...portfolio, grid: { ...portfolio.grid, cells: newCells } };
 }
 
 export function savePortfolio(slug: string, portfolio: Portfolio): void {

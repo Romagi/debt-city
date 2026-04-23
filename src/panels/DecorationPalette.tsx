@@ -11,10 +11,9 @@ const DECORATION_CATALOG: DecoItem[] = [
   { type: 'tree_sm', label: 'Petit arbre', sprite: '/sprites/tree-sm.png', size: [1, 1] },
   { type: 'tree_lg', label: 'Grand arbre', sprite: '/sprites/tree-lg.png', size: [1, 1] },
   { type: 'park', label: 'Parc', sprite: '/sprites/park.png', size: [2, 2] },
-  { type: 'road', label: 'Route 1', sprite: '/sprites/road-straight-1.png', size: [1, 1] },
-  { type: 'road_2', label: 'Route 2', sprite: '/sprites/road-straight-2.png', size: [1, 1] },
-  { type: 'road_cross', label: 'Carrefour', sprite: '/sprites/road-cross.png', size: [1, 1] },
+  { type: 'road', label: 'Route', sprite: '/sprites/road-straight-1.png', size: [1, 1] },
   { type: 'sidewalk', label: 'Trottoir', sprite: '/sprites/tile-concrete.png', size: [1, 1] },
+  { type: 'bush', label: 'Buisson', sprite: '/sprites/bush.png', size: [1, 1] },
 ];
 
 interface Props {

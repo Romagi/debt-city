@@ -125,11 +125,8 @@ function getShopSizeKey(lenderCount: number): string {
   return 'shop_kiosk';
 }
 
-function getLibrarySizeKey(docCount: number): string {
-  if (docCount >= 9) return 'library_lg';
-  if (docCount >= 4) return 'library_md';
-  return 'library_sm';
-}
+// Library is now a single model (library_md, 2×2) — no size variants.
+const LIBRARY_SPRITE_KEY = 'library_md';
 
 function findStructureOnGrid(grid: GridState, entityId: string, type: string): { col: number; row: number } | null {
   for (let r = 0; r < grid.size; r++) {
@@ -208,8 +205,8 @@ export function buildCityState(portfolio: Portfolio): CityState {
     }
 
     if (!findStructureOnGrid(grid, project.id, 'library')) {
-      const lSizeKey = getLibrarySizeKey(project.documents.length);
-      const [lW, lH] = STRUCTURE_SIZES[lSizeKey] ?? [2, 2];
+      // Single library model: library_md (2×2)
+      const [lW, lH] = STRUCTURE_SIZES[LIBRARY_SPRITE_KEY] ?? [2, 2];
       const lCol = d.col + 1;
       const lRow = d.row + 1;
       if (canPlace(grid, lCol, lRow, lW, lH)) {
@@ -217,14 +214,29 @@ export function buildCityState(portfolio: Portfolio): CityState {
       }
     }
 
-    // Convert grid positions to screen positions
-    const { x, y } = gridToScreen(bCol + bw / 2, bRow + bh / 2);
+    // ── Convert grid positions to screen positions (SOUTH-TIP convention) ──
+    // South tip of N×M footprint at (col, row) = gridToScreen(col + N - 0.5, row + M - 0.5)
+    const { x, y } = gridToScreen(bCol + bw - 0.5, bRow + bh - 0.5);
     const thPos = findStructureOnGrid(grid, project.id, 'townhall');
-    const sPos = findStructureOnGrid(grid, project.id, 'shop');
-    const lPos = findStructureOnGrid(grid, project.id, 'library');
-    const thScreen = thPos ? gridToScreen(thPos.col + 1.5, thPos.row + 1.5) : { x: x - 60, y: y + 30 };
-    const sScreen = sPos ? gridToScreen(sPos.col + 1, sPos.row + 1) : { x: x + 60, y: y + 30 };
-    const lScreen = lPos ? gridToScreen(lPos.col + 1, lPos.row + 1) : { x: x - 60, y: y - 30 };
+    const sPos  = findStructureOnGrid(grid, project.id, 'shop');
+    const lPos  = findStructureOnGrid(grid, project.id, 'library');
+
+    // Townhall: 2×2 → south tip = col+1.5, row+1.5
+    const thScreen = thPos
+      ? gridToScreen(thPos.col + 1.5, thPos.row + 1.5)
+      : { x: x - 60, y: y + 30 };
+
+    // Shop: size varies by lender count — compute south tip dynamically
+    const sSizeKey = getShopSizeKey(project.lenders.length);
+    const [sW, sH] = STRUCTURE_SIZES[sSizeKey] ?? [1, 1];
+    const sScreen = sPos
+      ? gridToScreen(sPos.col + sW - 0.5, sPos.row + sH - 0.5)
+      : { x: x + 60, y: y + 30 };
+
+    // Library: 2×2 → south tip = col+1.5, row+1.5
+    const lScreen = lPos
+      ? gridToScreen(lPos.col + 1.5, lPos.row + 1.5)
+      : { x: x - 60, y: y - 30 };
 
     const mainBuilding: CityBuilding = {
       project,

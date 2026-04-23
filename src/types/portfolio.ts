@@ -325,14 +325,14 @@ export interface CityState {
 
 export const GRID_SIZE = 60; // fits up to ~12 districts (4×3)
 export const ISO_TILE_W = 64; // pixel width of one iso tile
-export const ISO_TILE_H = 38; // pixel height of one iso tile (30.5° isometric angle)
+export const ISO_TILE_H = 38; // pixel height of one iso tile (~30.5° dimetric — matches new sprite library geometry)
 export const DISTRICT_SIZE = 12; // 12×12 tiles per district
 export const DISTRICT_GAP = 1; // gap between districts (for roads)
 export const DISTRICT_COLS = 4; // districts per row
 
-export type CellType = 'building' | 'townhall' | 'shop' | 'library' | 'tree_sm' | 'tree_lg' | 'road' | 'road_2' | 'road_cross' | 'sidewalk' | 'park' | 'bench' | 'fountain' | 'bush';
+export type CellType = 'building' | 'townhall' | 'shop' | 'library' | 'tree_sm' | 'tree_lg' | 'road' | 'sidewalk' | 'park' | 'bench' | 'fountain' | 'bush';
 
-export const DECORATION_TYPES: Set<CellType> = new Set(['tree_sm', 'tree_lg', 'road', 'road_2', 'road_cross', 'sidewalk', 'park', 'bench', 'fountain', 'bush']);
+export const DECORATION_TYPES: Set<CellType> = new Set(['tree_sm', 'tree_lg', 'road', 'sidewalk', 'park', 'bench', 'fountain', 'bush']);
 
 export interface CellContent {
   type: CellType;
@@ -357,33 +357,50 @@ export interface GridState {
 }
 
 /** How many grid cells each structure type occupies [cols, rows]
- *  Based on actual sprite footprint (base isometric diamond), NOT height */
+ *  Based on actual sprite footprint (base isometric diamond), NOT height.
+ *  New lib sprites (512/768/1024 wide, baseRatio=1.0):
+ *    512px → 1×1  (footprintW = (1+1)*32 = 64,  scale = 64/512  = 0.125)
+ *    768px → 2×1  (footprintW = (2+1)*32 = 96,  scale = 96/768  = 0.125)
+ *   1024px → 2×2  (footprintW = (2+2)*32 = 128, scale = 128/1024 = 0.125) */
 export const STRUCTURE_SIZES: Record<string, [number, number]> = {
-  // Buildings and townhall: 3×3 to match visual scale of library-lg and shop-mall
-  building_xs: [3, 3],
-  building_sm: [3, 3],
-  building_md: [3, 3],
-  building_lg: [3, 3],
-  building_xl: [3, 3],
-  townhall: [3, 3],
-  shop_kiosk: [2, 2],
-  shop_store: [2, 2],
-  shop_mall: [3, 3],
-  library_sm: [2, 2],
-  library_md: [2, 2],
-  library_lg: [3, 3],
-  // Sprite-key aliases (drawSpriteOnGrid looks up by sprite key)
-  shop_lg: [3, 3],
-  road_straight_1: [1, 1],
-  road_straight_2: [1, 1],
+  // ── Main buildings — new lib sprites ──────────────────────────────────────
+  building_xs: [1, 1],   // 512×1024
+  building_sm: [2, 1],   // 768×1280
+  building_md: [2, 1],   // 768×1280
+  building_lg: [2, 2],   // 1024×1280
+  building_xl: [2, 2],   // 1024×1536
+  // ── Sub-structures — new lib sprites ─────────────────────────────────────
+  townhall:    [2, 2],   // 1024×1280
+  shop_kiosk:  [1, 1],   // 512×768
+  shop_store:  [2, 1],   // 768×1280
+  shop_mall:   [2, 2],   // 1024×1280
+  library_md:  [2, 2],   // 1024×1024
+  // ── Construction placeholders (named after footprint) ────────────────────
+  construction_1x1: [1, 1],   // 512×512
+  construction_2x1: [2, 1],   // 768×1024
+  construction_2x2: [2, 2],   // 1024×1024
+  road_straight_ns: [1, 1],
+  road_straight_ew: [1, 1],
   road_cross: [1, 1],
-  road_turn: [1, 1],
+  road_turn_ne: [1, 1],
+  road_turn_se: [1, 1],
+  road_turn_sw: [1, 1],
+  road_turn_nw: [1, 1],
+  road_t_nse: [1, 1],
+  road_t_sew: [1, 1],
+  road_t_nsw: [1, 1],
+  road_t_new: [1, 1],
+  road_isolated: [1, 1],
+  road_end_n: [1, 1],
+  road_end_e: [1, 1],
+  road_end_s: [1, 1],
+  road_end_w: [1, 1],
   tile_sidewalk: [1, 1],
+  tile_sidewalk_flat: [1, 1],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],
   road: [1, 1],
-  road_2: [1, 1],
   sidewalk: [1, 1],
   park: [2, 2],
   bench: [1, 1],

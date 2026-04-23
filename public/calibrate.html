@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Calibrateur ISO — Debt City</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  display: flex; height: 100vh; overflow: hidden;
+  background: #0f1117; color: #e0e0e0;
+  font-family: 'SF Mono', 'Fira Code', Consolas, monospace; font-size: 12px;
+}
+
+/* ── Panel gauche ── */
+#panel {
+  width: 280px; min-width: 280px; height: 100vh; overflow-y: auto;
+  background: #161b27; border-right: 1px solid #252d40;
+  padding: 14px; display: flex; flex-direction: column; gap: 12px;
+}
+h1 { font-size: 13px; color: #7eb8f7; font-weight: bold; }
+h2 { font-size: 10px; color: #556; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+
+.box {
+  background: #1a2135; border: 1px solid #252d40;
+  border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+
+.row { display: flex; flex-direction: column; gap: 3px; }
+.lbl { display: flex; justify-content: space-between; }
+.lbl span:first-child { color: #8a9bb5; }
+.lbl b { color: #f7c94e; }
+
+input[type=range] { width: 100%; accent-color: #7eb8f7; cursor: pointer; height: 16px; }
+
+select {
+  width: 100%; background: #0f1117; color: #e0e0e0;
+  border: 1px solid #252d40; border-radius: 4px;
+  padding: 5px 8px; font-family: inherit; font-size: 12px; cursor: pointer;
+}
+
+pre#output {
+  background: #0a0d16; border: 1px solid #252d40; border-radius: 6px;
+  padding: 10px; color: #7ed87e; font-size: 11px; line-height: 1.8;
+  white-space: pre; overflow-x: auto;
+}
+
+.checks { display: flex; gap: 6px; flex-wrap: wrap; }
+.checks label {
+  display: flex; align-items: center; gap: 4px; cursor: pointer;
+  padding: 3px 7px; border-radius: 4px; border: 1px solid #252d40; background: #0f1117;
+}
+.checks label:hover { background: #1a2135; }
+.checks input { accent-color: #7eb8f7; cursor: pointer; }
+
+.btns { display: flex; gap: 8px; }
+button {
+  flex: 1; padding: 8px; border-radius: 6px; border: none; cursor: pointer;
+  font-family: inherit; font-size: 12px; font-weight: bold; transition: opacity 0.15s;
+}
+button:hover { opacity: 0.8; }
+.btn-primary { background: #7eb8f7; color: #0f1117; }
+.btn-ghost   { background: #252d40; color: #e0e0e0; }
+
+#spriteInfo { color: #556; font-size: 11px; line-height: 1.6; }
+
+/* ── Canvas ── */
+#wrap { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+canvas { display: block; }
+#hint {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.55); color: #666; padding: 5px 12px;
+  border-radius: 20px; font-size: 11px; pointer-events: none; white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h1>🔧 Calibrateur Grille ISO</h1>
+
+  <div class="box">
+    <h2>Sprite à calibrer</h2>
+    <select id="spriteSelect">
+      <option value="/sprites/tile-grass.png">tile-grass.png (512×512)</option>
+      <option value="/sprites/road-straight-1.png">road-straight-1.png (512×512)</option>
+      <option value="/sprites/road-straight-2.png">road-straight-2.png (512×512)</option>
+      <option value="/sprites/road-cross.png">road-cross.png (512×512)</option>
+      <option value="/sprites/road-turn-1.png">road-turn-1.png (512×512)</option>
+      <option value="/sprites/road-turn-2.png">road-turn-2.png (512×512)</option>
+      <option value="/sprites/road-turn-3.png">road-turn-3.png (512×512)</option>
+      <option value="/sprites/road-t-1.png">road-t-1.png (512×512)</option>
+      <option value="/sprites/road-end-1.png">road-end-1.png (512×512)</option>
+      <option value="/sprites/building-xs.png">building-xs.png (512×1024) — 1×1</option>
+      <option value="/sprites/building-sm.png">building-sm.png (768×1280) — 2×1</option>
+      <option value="/sprites/building-xl.png">building-xl.png (1024×1536) — 2×2</option>
+      <option value="/sprites/shop-kiosk.png">shop-kiosk.png (512×768) — 1×1</option>
+    </select>
+    <div id="spriteInfo">En attente…</div>
+    <div class="row">
+      <div class="lbl"><span>Footprint</span></div>
+      <select id="footprint">
+        <option value="1,1">1×1 (kiosk, tile)</option>
+        <option value="2,1">2×1 (building_sm)</option>
+        <option value="2,2">2×2 (building_lg)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>Constantes grille</h2>
+    <div class="row">
+      <div class="lbl"><span>ISO_TILE_W</span><b id="v-tileW">64</b></div>
+      <input type="range" id="tileW" min="32" max="128" step="2" value="64">
+    </div>
+    <div class="row">
+      <div class="lbl"><span>ISO_TILE_H</span><b id="v-tileH">38</b></div>
+      <input type="range" id="tileH" min="16" max="64" step="1" value="38">
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>Paramètres sprite</h2>
+    <div class="row">
+      <div class="lbl"><span>baseRatio</span><b id="v-baseRatio">1.000</b></div>
+      <input type="range" id="baseRatio" min="0.05" max="2.0" step="0.005" value="1.0">
+    </div>
+    <div class="row">
+      <div class="lbl"><span>yOff</span><b id="v-yOff">0.50</b></div>
+      <input type="range" id="yOff" min="-1.0" max="4.0" step="0.01" value="0.5">
+    </div>
+    <div class="row">
+      <div class="lbl"><span>xOff</span><b id="v-xOff">0.00</b></div>
+      <input type="range" id="xOff" min="-2.0" max="2.0" step="0.01" value="0.0">
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>Affichage</h2>
+    <div class="checks">
+      <label><input type="checkbox" id="showGrid" checked> Grille</label>
+      <label><input type="checkbox" id="showAnchor" checked> Anchor</label>
+      <label><input type="checkbox" id="showRepeat" checked> 3×3</label>
+    </div>
+  </div>
+
+  <div class="box">
+    <h2>Valeurs calculées</h2>
+    <pre id="output">—</pre>
+  </div>
+
+  <div class="btns">
+    <button class="btn-primary" id="copyBtn" onclick="copyParams()">📋 Copier</button>
+    <button class="btn-ghost" onclick="resetAll()">Reset</button>
+  </div>
+</div>
+
+<div id="wrap">
+  <canvas id="canvas"></canvas>
+  <div id="hint">Ajuste les sliders · bleu = anchor point (south-tip)</div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const S = {
+  tileW: 64, tileH: 38,
+  baseRatio: 1.0, yOff: 0.5, xOff: 0.0,
+  footCols: 1, footRows: 1,
+  showGrid: true, showAnchor: true, showRepeat: true,
+};
+
+let img = null;
+let imgW = 512, imgH = 512;
+
+// ── Canvas setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const dpr  = window.devicePixelRatio || 1;
+  const W    = wrap.clientWidth;
+  const H    = wrap.clientHeight;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+window.addEventListener('resize', resize);
+
+// ── Iso math ───────────────────────────────────────────────────────────────
+function g2s(col, row) {
+  return {
+    x: (col - row) * (S.tileW / 2),
+    y: (col + row) * (S.tileH / 2),
+  };
+}
+
+// ── Draw ───────────────────────────────────────────────────────────────────
+function draw() {
+  const W = canvas.width  / (window.devicePixelRatio || 1);
+  const H = canvas.height / (window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, W, H);
+
+  const GRID = 9;  // number of cells on each axis
+
+  // Origin = top corner of the grid, centered horizontally
+  const ox = W / 2;
+  const oy = H * 0.08;
+
+  // ── 1. Fill cells with dark green ─────────────────────────────────────
+  for (let c = 0; c < GRID; c++) {
+    for (let r = 0; r < GRID; r++) {
+      diamond(ox + g2s(c, r).x, oy + g2s(c, r).y, '#182a18', null, 0);
+    }
+  }
+
+  // ── 2. Draw sprites ────────────────────────────────────────────────────
+  if (img) {
+    const footprintW = (S.footCols + S.footRows) * (S.tileW / 2);
+    const scale = footprintW / (imgW * S.baseRatio);
+    const sw = imgW * scale;
+    const sh = imgH * scale;
+
+    const reps = S.showRepeat ? 3 : 1;
+    const startC = 1, startR = 1;
+
+    for (let ti = 0; ti < reps; ti++) {
+      for (let tj = 0; tj < reps; tj++) {
+        const c = startC + ti * S.footCols;
+        const r = startR + tj * S.footRows;
+        if (c + S.footCols > GRID || r + S.footRows > GRID) continue;
+
+        // South-tip anchor
+        const a = g2s(c + S.footCols - 0.5, r + S.footRows - 0.5);
+        const ax = ox + a.x;
+        const ay = oy + a.y;
+
+        const dx = ax - sw / 2 + S.tileW * S.xOff;
+        const dy = ay - sh     + S.tileH * S.yOff;
+
+        ctx.drawImage(img, dx, dy, sw, sh);
+      }
+    }
+  }
+
+  // ── 3. Grid lines ──────────────────────────────────────────────────────
+  if (S.showGrid) {
+    for (let c = 0; c < GRID; c++) {
+      for (let r = 0; r < GRID; r++) {
+        diamond(ox + g2s(c, r).x, oy + g2s(c, r).y, null, 'rgba(255,255,255,0.22)', 0.5);
+      }
+    }
+  }
+
+  // ── 4. Anchor dots ─────────────────────────────────────────────────────
+  if (S.showAnchor && img) {
+    const reps = S.showRepeat ? 3 : 1;
+    for (let ti = 0; ti < reps; ti++) {
+      for (let tj = 0; tj < reps; tj++) {
+        const c = 1 + ti * S.footCols;
+        const r = 1 + tj * S.footRows;
+        if (c + S.footCols > GRID || r + S.footRows > GRID) continue;
+        const a = g2s(c + S.footCols - 0.5, r + S.footRows - 0.5);
+        dot(ox + a.x, oy + a.y, 5, '#4fa8f7');
+      }
+    }
+  }
+
+  // ── 5. Update output panel ─────────────────────────────────────────────
+  updateOutput();
+}
+
+function diamond(cx, cy, fill, stroke, lw) {
+  const hw = S.tileW / 2, hh = S.tileH / 2;
+  ctx.beginPath();
+  ctx.moveTo(cx,      cy - hh);
+  ctx.lineTo(cx + hw, cy);
+  ctx.lineTo(cx,      cy + hh);
+  ctx.lineTo(cx - hw, cy);
+  ctx.closePath();
+  if (fill)   { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+
+function dot(x, y, r, color) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+// ── Output ─────────────────────────────────────────────────────────────────
+function updateOutput() {
+  const footprintW = (S.footCols + S.footRows) * (S.tileW / 2);
+  const baseW      = imgW * S.baseRatio;
+  const scale      = footprintW / baseW;
+  const sw         = (imgW * scale).toFixed(1);
+  const sh         = (imgH * scale).toFixed(1);
+  document.getElementById('output').textContent =
+`ISO_TILE_W  = ${S.tileW}
+ISO_TILE_H  = ${S.tileH}
+
+baseRatio   = ${S.baseRatio.toFixed(3)}
+yOff        = ${S.yOff.toFixed(2)}
+xOff        = ${S.xOff.toFixed(2)}
+
+footprintW  = ${footprintW}px
+scale       = ${scale.toFixed(4)}
+sw          = ${sw}px
+sh          = ${sh}px`;
+}
+
+// ── Copy ───────────────────────────────────────────────────────────────────
+function copyParams() {
+  const sel  = document.getElementById('spriteSelect');
+  const name = sel.options[sel.selectedIndex].text.split('.')[0];
+  const txt  =
+`// ${name}  footprint ${S.footCols}×${S.footRows}
+${name}: { baseRatio: ${S.baseRatio.toFixed(3)}, yOff: ${S.yOff.toFixed(2)}, xOff: ${S.xOff.toFixed(2)} },
+// ISO_TILE_W=${S.tileW}  ISO_TILE_H=${S.tileH}`;
+  navigator.clipboard.writeText(txt).catch(() => {});
+  const btn = document.getElementById('copyBtn');
+  const prev = btn.textContent;
+  btn.textContent = '✓ Copié !';
+  setTimeout(() => btn.textContent = prev, 1500);
+}
+
+// ── Reset ──────────────────────────────────────────────────────────────────
+function resetAll() {
+  const defaults = { tileW: 64, tileH: 38, baseRatio: 1.0, yOff: 0.5, xOff: 0.0 };
+  for (const [k, v] of Object.entries(defaults)) {
+    document.getElementById(k).value = v;
+    S[k] = v;
+  }
+  syncDisplays();
+  draw();
+}
+
+// ── Slider wiring ──────────────────────────────────────────────────────────
+function syncDisplays() {
+  document.getElementById('v-tileW').textContent     = S.tileW;
+  document.getElementById('v-tileH').textContent     = S.tileH;
+  document.getElementById('v-baseRatio').textContent = S.baseRatio.toFixed(3);
+  document.getElementById('v-yOff').textContent      = S.yOff.toFixed(2);
+  document.getElementById('v-xOff').textContent      = S.xOff.toFixed(2);
+}
+
+function wireRange(id, key, digits) {
+  document.getElementById(id).addEventListener('input', function() {
+    S[key] = parseFloat(this.value);
+    document.getElementById('v-' + id).textContent = digits === 0 ? S[key] : S[key].toFixed(digits);
+    draw();
+  });
+}
+wireRange('tileW',     'tileW',     0);
+wireRange('tileH',     'tileH',     0);
+wireRange('baseRatio', 'baseRatio', 3);
+wireRange('yOff',      'yOff',      2);
+wireRange('xOff',      'xOff',      2);
+
+document.getElementById('footprint').addEventListener('change', function() {
+  const [fc, fr] = this.value.split(',').map(Number);
+  S.footCols = fc; S.footRows = fr;
+  draw();
+});
+
+['showGrid','showAnchor','showRepeat'].forEach(id => {
+  document.getElementById(id).addEventListener('change', function() {
+    S[id] = this.checked; draw();
+  });
+});
+
+// ── Sprite loading ─────────────────────────────────────────────────────────
+function loadSprite(src) {
+  document.getElementById('spriteInfo').textContent = 'Chargement…';
+  img = null;
+  const i = new Image();
+  i.onload = () => {
+    img = i; imgW = i.naturalWidth; imgH = i.naturalHeight;
+    document.getElementById('spriteInfo').textContent = `✅  ${imgW}×${imgH}px`;
+    draw();
+  };
+  i.onerror = () => {
+    document.getElementById('spriteInfo').textContent = '⚠ Sprite introuvable';
+    draw();
+  };
+  i.src = src;
+}
+
+// Auto-set footprint when sprite changes
+const SPRITE_FOOTPRINTS = {
+  'tile-grass':      '1,1',
+  'road-straight-1': '1,1',
+  'road-straight-2': '1,1',
+  'road-cross':      '1,1',
+  'road-turn-1':     '1,1',
+  'road-turn-2':     '1,1',
+  'road-turn-3':     '1,1',
+  'road-t-1':        '1,1',
+  'road-end-1':      '1,1',
+  'building-xs':     '1,1',
+  'building-sm':     '2,1',
+  'building-xl':     '2,2',
+  'shop-kiosk':      '1,1',
+};
+
+document.getElementById('spriteSelect').addEventListener('change', function() {
+  // Extract sprite name from path: /sprites/foo.png → foo
+  const name = this.value.replace('/sprites/', '').replace('.png', '');
+  const fp = SPRITE_FOOTPRINTS[name] || '1,1';
+  const footSel = document.getElementById('footprint');
+  footSel.value = fp;
+  const [fc, fr] = fp.split(',').map(Number);
+  S.footCols = fc; S.footRows = fr;
+  loadSprite(this.value);
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+resize();
+loadSprite(document.getElementById('spriteSelect').value);
+</script>
+</body>
+</html>
