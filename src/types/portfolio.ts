@@ -410,6 +410,11 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   road_t_2:        [1, 1],
   road_end_1:      [1, 1],
   road_end_2:      [1, 1],
+  road_end_3:      [1, 1],
+  road_end_4:      [1, 1],
+  road_turn_4:     [1, 1],
+  road_t_3:        [1, 1],
+  road_t_4:        [1, 1],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],

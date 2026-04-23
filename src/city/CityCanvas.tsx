@@ -76,6 +76,11 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   road_t_2:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_1:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_2:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_end_3:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_end_4:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_turn_4:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_t_3:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_t_4:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   // ── Footprint 2×1 ────────────────────────────────────────────────────────
   building_sm:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280  ✅ calibré
   building_md:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280
@@ -107,21 +112,21 @@ function getRoadSpriteKey(variant: RoadVariant): SpriteKey {
     case 'road_straight_ew':  return 'road_straight_2';
     // Cross
     case 'road_cross':        return 'road_cross';
-    // T-junctions
-    case 'road_t_nse':        return 'road_t_1';
-    case 'road_t_sew':        return 'road_t_1';   // no exact sprite — closest
-    case 'road_t_nsw':        return 'road_t_2';
-    case 'road_t_new':        return 'road_t_2';   // no exact sprite — closest
+    // T-junctions  (convention écran : N=haut-droite, E=bas-droite, S=bas-gauche, W=haut-gauche)
+    case 'road_t_nsw':        return 'road_t_1';   // fermé bas-droite  (E fermé)  ✅
+    case 'road_t_sew':        return 'road_t_2';   // fermé haut-droite (N fermé)  ✅
+    case 'road_t_nse':        return 'road_t_3';   // fermé haut-gauche (W fermé)  ← à livrer
+    case 'road_t_new':        return 'road_t_4';   // fermé bas-gauche  (S fermé)  ← à livrer
     // Turns
     case 'road_turn_ne':      return 'road_turn_1';
     case 'road_turn_se':      return 'road_turn_2';
     case 'road_turn_sw':      return 'road_turn_3';
-    case 'road_turn_nw':      return 'road_turn_1'; // no NW sprite — reuse NE
+    case 'road_turn_nw':      return 'road_turn_4';
     // Dead ends
-    case 'road_end_n':
-    case 'road_end_s':        return 'road_end_1';
-    case 'road_end_e':
-    case 'road_end_w':        return 'road_end_2';
+    case 'road_end_w':        return 'road_end_1';  // fermé E
+    case 'road_end_s':        return 'road_end_2';  // fermé N
+    case 'road_end_e':        return 'road_end_3';  // fermé W
+    case 'road_end_n':        return 'road_end_4';  // fermé S
     // Default: straight NS + isolated
     default:                  return 'road_straight_1';
   }
@@ -159,8 +164,13 @@ const SPRITE_PATHS = {
   road_turn_3:     '/sprites/road-turn-3.png',
   road_t_1:        '/sprites/road-t-1.png',
   road_t_2:        '/sprites/road-t-2.png',
-  road_end_1:      '/sprites/road-end-1.png',
-  road_end_2:      '/sprites/road-end-2.png',
+  road_end_1:      '/sprites/road-end-1.png',   // fermé E (cap bas-droite) → road_end_w
+  road_end_2:      '/sprites/road-end-2.png',   // fermé N (cap haut-droite) → road_end_s
+  road_end_3:      '/sprites/road-end-3.png',   // fermé W (cap haut-gauche) → road_end_e
+  road_end_4:      '/sprites/road-end-4.png',   // fermé S (cap bas-gauche)  → road_end_n
+  road_turn_4:     '/sprites/road-turn-4.png',  // virage NW
+  road_t_3:        '/sprites/road-t-3.png',     // fermé W → road_t_nse
+  road_t_4:        '/sprites/road-t-4.png',     // fermé S → road_t_new
   // ── Decorations / objects ─────────────────────────────────────────────────
   ground:       '/sprites/ground-tile.png',
   tile_concrete: '/sprites/tile-concrete.png',
