@@ -1,4 +1,4 @@
-import { useState, useMemo, useReducer, useEffect } from 'react';
+import { useState, useMemo, useReducer, useEffect, useRef } from 'react';
 import CityCanvas from './city/CityCanvas';
 import BuildingPanel from './panels/BuildingPanel';
 import TownhallPanel from './panels/TownhallPanel';
