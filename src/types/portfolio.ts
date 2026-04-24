@@ -398,23 +398,22 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   tile_sidewalk: [1, 1],
   tile_sidewalk_flat: [1, 1],
   // ── Ground tiles ─────────────────────────────────────────────────────────
-  tile_grass: [1, 1],        // sprite key utilisé dans drawGrid
-  // ── Road sprite keys (distincts des variantes road_straight_ns etc.) ─────
-  road_straight_1: [1, 1],
-  road_straight_2: [1, 1],
-  road_turn:       [1, 1],   // legacy alias
-  road_turn_1:     [1, 1],
-  road_turn_2:     [1, 1],
-  road_turn_3:     [1, 1],
-  road_t_1:        [1, 1],
-  road_t_2:        [1, 1],
-  road_end_1:      [1, 1],
-  road_end_2:      [1, 1],
-  road_end_3:      [1, 1],
-  road_end_4:      [1, 1],
-  road_turn_4:     [1, 1],
-  road_t_3:        [1, 1],
-  road_t_4:        [1, 1],
+  tile_grass:    [1, 1],
+  // ── Road sprite keys ─────────────────────────────────────────────────────
+  road_straight_1: [1, 1], road_straight_2: [1, 1],
+  road_turn_1: [1, 1], road_turn_2: [1, 1], road_turn_3: [1, 1], road_turn_4: [1, 1],
+  road_t_1: [1, 1], road_t_2: [1, 1], road_t_3: [1, 1], road_t_4: [1, 1],
+  road_end_1: [1, 1], road_end_2: [1, 1], road_end_3: [1, 1], road_end_4: [1, 1],
+  // ── Trottoirs ────────────────────────────────────────────────────────────
+  sidewalk_1: [1, 1], sidewalk_2: [1, 1], sidewalk_3: [1, 1], sidewalk_4: [1, 1],
+  sidewalk_5: [1, 1], sidewalk_6: [1, 1], sidewalk_7: [1, 1], sidewalk_8: [1, 1],
+  sidewalk_9: [1, 1],
+  // ── Nature ───────────────────────────────────────────────────────────────
+  tree_palm: [1, 1], tree_3: [1, 1], tree_14: [1, 1],
+  // ── Décorations ──────────────────────────────────────────────────────────
+  park_fountain: [2, 2], park_pond: [2, 2],
+  // ── Utilitaires ──────────────────────────────────────────────────────────
+  carpark_sign: [2, 1], carpark_gate: [2, 2],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],

@@ -53,55 +53,74 @@ const EMPTY_LOT_H = 10;
 
 /** Per-sprite rendering calibration — SOUTH-TIP anchor convention.
  *
- *  Valeurs calibrées visuellement via /calibrate.html (2025-04) :
- *    1×1  → yOff: 0.50, xOff:  0.00  (grass, routes, building_xs, shop_kiosk)
+ *  Calibré via /calibrate.html :
+ *    1×1  → yOff: 0.50, xOff:  0.00  (grass, routes, trottoirs, building_xs)
  *    2×1  → yOff: 0.46, xOff: -0.24  (building_sm/md, shop_store, construction_2x1)
- *    2×2  → yOff: 0.43, xOff:  0.00  (building_lg/xl, townhall, shop_mall, library_md, construction_2x2)
+ *    2×2  → yOff: 0.43, xOff:  0.00  (building_lg/xl, townhall, shop_mall…)
+ *  Nouveaux sprites (trees, deco, utilities) → à calibrer dans /calibrate.html
  */
 const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: number }> = {
-  // ── Footprint 1×1 ────────────────────────────────────────────────────────
-  building_xs:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×1024
-  shop_kiosk:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×768
-  construction_1x1: { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×512
-  tile_grass:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // 512×512 ✅ calibré
-  // Roads 1×1 (même calibration que tile_grass — tuile plate)
+  // ── Footprint 1×1 — calibrés ─────────────────────────────────────────────
+  building_xs:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  shop_kiosk:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  construction_1x1: { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  tile_grass:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },  // ✅ calibré
+  // Routes 1×1
   road_straight_1:  { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_straight_2:  { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_cross:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  road_turn:        { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_turn_1:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_turn_2:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_turn_3:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_turn_4:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_t_1:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_t_2:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_t_3:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  road_t_4:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_1:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_2:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_3:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_4:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  road_turn_4:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  road_t_3:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  road_t_4:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  // ── Footprint 2×1 ────────────────────────────────────────────────────────
-  building_sm:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280  ✅ calibré
-  building_md:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280
-  shop_store:       { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1280
-  construction_2x1: { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // 768×1024
-  // ── Footprint 2×2 ────────────────────────────────────────────────────────
-  building_lg:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1280
-  building_xl:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1536 ✅ calibré
-  townhall:         { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1280
-  shop_mall:        { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1280
-  library_md:       { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1024
-  construction_2x2: { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // 1024×1024
-  // ── Legacy sprites (2048×2048, non migrés) ───────────────────────────────
-  tile_sidewalk_flat: { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tile_sidewalk:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tree_sm:            { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tree_lg:            { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  bush:               { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  ground:             { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  tile_concrete:      { baseRatio: 0.1875, yOff: 0.56, xOff: 0 },
-  park:               { baseRatio: 0.375,  yOff: 1.56, xOff: 0 },
+  // Trottoirs 1×1 (512×512 = même format tile_grass)
+  sidewalk_1:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_2:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_3:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_4:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_5:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_6:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_7:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_8:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_9:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  // Nature 1×1 ✅ calibré
+  tree_palm:        { baseRatio: 1.000, yOff: -0.32, xOff:  0.00 },  // 152×224
+  tree_3:           { baseRatio: 1.385, yOff: -0.32, xOff:  0.00 },  // 154×227
+  tree_14:          { baseRatio: 1.385, yOff: -0.32, xOff:  0.00 },  // 154×224
+  // ── Footprint 2×1 — calibrés ─────────────────────────────────────────────
+  building_sm:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // ✅ calibré
+  building_md:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
+  shop_store:       { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
+  construction_2x1: { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
+  // ── Footprint 2×1 ─────────────────────────────────────────────────────────
+  carpark_sign:     { baseRatio: 1.000, yOff: 0.44, xOff: -0.25 },  // 768×1024 ✅ calibré
+  // ── Footprint 2×2 — calibrés ─────────────────────────────────────────────
+  building_lg:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
+  building_xl:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // ✅ calibré
+  townhall:         { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
+  shop_mall:        { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
+  library_md:       { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
+  construction_2x2: { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
+  park_fountain:    { baseRatio: 1.000, yOff: 0.50, xOff:  0.00 },  // 1024×768  ✅ calibré
+  park_pond:        { baseRatio: 1.000, yOff: 0.50, xOff:  0.00 },  // 1024×1024 ✅ calibré
+  carpark_gate:     { baseRatio: 0.985, yOff: 0.48, xOff:  0.00 },  // 1024×1024 ✅ calibré
+  // ── Legacy aliases (grids existantes) — redirects vers nouveaux sprites ───
+  tree_sm:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  tree_lg:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  bush:             { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  ground:           { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  tile_concrete:    { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  tile_sidewalk:    { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  tile_sidewalk_flat: { baseRatio: 1.0, yOff: 0.50, xOff: 0.00 },
+  park:             { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
 };
 
 /** Map a RoadVariant to the best available sprite key.
@@ -135,50 +154,68 @@ function getRoadSpriteKey(variant: RoadVariant): SpriteKey {
 // ─── Sprite system ───
 
 const SPRITE_PATHS = {
-  // ── Main buildings (new lib sprites, 512/768/1024px wide) ─────────────────
-  building_xs: '/sprites/building-xs.png',   // 512×1024  footprint 1×1
-  building_sm: '/sprites/building-sm.png',   // 768×1280  footprint 2×1
-  building_md: '/sprites/building-md.png',   // 768×1280  footprint 2×1
-  building_lg: '/sprites/building-lg.png',   // 1024×1280 footprint 2×2
-  building_xl: '/sprites/building-xl.png',   // 1024×1536 footprint 2×2
-  // ── Sub-structures (new lib sprites) ─────────────────────────────────────
-  townhall:    '/sprites/townhall.png',       // 1024×1280 footprint 2×2
-  shop_kiosk:  '/sprites/shop-kiosk.png',    // 512×768   footprint 1×1
-  shop_store:  '/sprites/shop-store.png',    // 768×1280  footprint 2×1
-  shop_mall:   '/sprites/shop-mall.png',     // 1024×1280 footprint 2×2
-  library_md:  '/sprites/library-md.png',    // 1024×1024 footprint 2×2
-  // ── Construction placeholders (new lib sprites) ───────────────────────────
-  construction_1x1: '/sprites/construction_1x1.png',  // 512×512   footprint 1×1
-  construction_2x1: '/sprites/construction_2x1.png',  // 768×1024  footprint 2×1
-  construction_2x2: '/sprites/construction_2x2.png',  // 1024×1024 footprint 2×2
-  // ── Ground tiles (standalone lib sprites, south-tip anchor) ───────────────
-  tile_grass:         '/sprites/tile-grass.png',
-  tile_sidewalk_flat: '/sprites/tile-concrete.png',  // placeholder until flat sprite arrives
-  // ── Road variants (new lib sprites, 512×512, auto-tiled) ─────────────────
-  road_straight_1: '/sprites/road-straight-1.png',
-  road_straight_2: '/sprites/road-straight-2.png',
-  road_cross:      '/sprites/road-cross.png',
-  road_turn:       '/sprites/road-turn-1.png',   // legacy alias → turn-1
-  road_turn_1:     '/sprites/road-turn-1.png',
-  road_turn_2:     '/sprites/road-turn-2.png',
-  road_turn_3:     '/sprites/road-turn-3.png',
-  road_t_1:        '/sprites/road-t-1.png',
-  road_t_2:        '/sprites/road-t-2.png',
-  road_end_1:      '/sprites/road-end-1.png',   // fermé E (cap bas-droite) → road_end_w
-  road_end_2:      '/sprites/road-end-2.png',   // fermé N (cap haut-droite) → road_end_s
-  road_end_3:      '/sprites/road-end-3.png',   // fermé W (cap haut-gauche) → road_end_e
-  road_end_4:      '/sprites/road-end-4.png',   // fermé S (cap bas-gauche)  → road_end_n
-  road_turn_4:     '/sprites/road-turn-4.png',  // virage NW
-  road_t_3:        '/sprites/road-t-3.png',     // fermé W → road_t_nse
-  road_t_4:        '/sprites/road-t-4.png',     // fermé S → road_t_new
-  // ── Decorations / objects ─────────────────────────────────────────────────
-  ground:       '/sprites/ground-tile.png',
-  tile_concrete: '/sprites/tile-concrete.png',
-  tile_sidewalk: '/sprites/tile-concrete.png',
-  tree_sm:      '/sprites/tree-sm.png',
-  tree_lg:      '/sprites/tree-lg.png',
-  bush:         '/sprites/bush.png',
-  park:         '/sprites/park.png',
+  // ── Buildings auto-générés (non plaçables par le joueur) ──────────────────
+  building_xs:      '/sprites/buildings_default/building-xs.png',   // 512×1024  1×1
+  building_sm:      '/sprites/buildings_default/building-sm.png',   // 768×1280  2×1
+  building_md:      '/sprites/buildings_default/building-md.png',   // 768×1280  2×1
+  building_lg:      '/sprites/buildings_default/building-lg.png',   // 1024×1280 2×2
+  building_xl:      '/sprites/buildings_default/building-xl.png',   // 1024×1536 2×2
+  townhall:         '/sprites/buildings_default/townhall.png',       // 1024×1280 2×2
+  shop_kiosk:       '/sprites/buildings_default/shop-kiosk.png',    // 512×768   1×1
+  shop_store:       '/sprites/buildings_default/shop-store.png',    // 768×1280  2×1
+  shop_mall:        '/sprites/buildings_default/shop-mall.png',     // 1024×1280 2×2
+  library_md:       '/sprites/buildings_default/library-md.png',    // 1024×1024 2×2
+  construction_1x1: '/sprites/buildings_default/construction_1x1.png', // 512×512  1×1
+  construction_2x1: '/sprites/buildings_default/construction_2x1.png', // 768×1024 2×1
+  construction_2x2: '/sprites/buildings_default/construction_2x2.png', // 1024×1024 2×2
+  crane:            '/sprites/buildings_default/crane.png',             // 304×517  overlay chantier
+  // ── Sol ──────────────────────────────────────────────────────────────────
+  tile_grass:       '/sprites/ground/tile-grass.png',               // 512×512  1×1 ✅ calibré
+  // ── Routes (auto-tiling 16 variantes) ────────────────────────────────────
+  road_straight_1:  '/sprites/roads/road-straight-1.png',
+  road_straight_2:  '/sprites/roads/road-straight-2.png',
+  road_cross:       '/sprites/roads/road-cross.png',
+  road_turn_1:      '/sprites/roads/road-turn-1.png',
+  road_turn_2:      '/sprites/roads/road-turn-2.png',
+  road_turn_3:      '/sprites/roads/road-turn-3.png',
+  road_turn_4:      '/sprites/roads/road-turn-4.png',
+  road_t_1:         '/sprites/roads/road-t-1.png',
+  road_t_2:         '/sprites/roads/road-t-2.png',
+  road_t_3:         '/sprites/roads/road-t-3.png',
+  road_t_4:         '/sprites/roads/road-t-4.png',
+  road_end_1:       '/sprites/roads/road-end-1.png',  // road_end_w (fermé E)
+  road_end_2:       '/sprites/roads/road-end-2.png',  // road_end_s (fermé N)
+  road_end_3:       '/sprites/roads/road-end-3.png',  // road_end_e (fermé W)
+  road_end_4:       '/sprites/roads/road-end-4.png',  // road_end_n (fermé S)
+  // ── Trottoirs (9 variantes, plaçables) ───────────────────────────────────
+  sidewalk_1:       '/sprites/sidewalks/Sidewalk_Tile1.png',        // 512×512  1×1
+  sidewalk_2:       '/sprites/sidewalks/Sidewalk_Tile2.png',
+  sidewalk_3:       '/sprites/sidewalks/Sidewalk_Tile3.png',
+  sidewalk_4:       '/sprites/sidewalks/Sidewalk_Tile4.png',
+  sidewalk_5:       '/sprites/sidewalks/Sidewalk_Tile5.png',
+  sidewalk_6:       '/sprites/sidewalks/Sidewalk_Tile6.png',
+  sidewalk_7:       '/sprites/sidewalks/Sidewalk_Tile7.png',
+  sidewalk_8:       '/sprites/sidewalks/Sidewalk_Tile8.png',
+  sidewalk_9:       '/sprites/sidewalks/Sidewalk_Tile9.png',
+  // ── Nature ───────────────────────────────────────────────────────────────
+  tree_palm:        '/sprites/nature/Palm3.png',                    // 152×224  1×1 à calibrer
+  tree_3:           '/sprites/nature/Tree3.png',                    // 154×227  1×1 à calibrer
+  tree_14:          '/sprites/nature/Tree14.png',                   // 154×224  1×1 à calibrer
+  // ── Décorations ──────────────────────────────────────────────────────────
+  park_fountain:    '/sprites/deco/Park_Fountain.png',              // 1024×768  2×2 à calibrer
+  park_pond:        '/sprites/deco/Park_Pond.png',                  // 1024×1024 2×2 à calibrer
+  // ── Utilitaires (plaçables) ───────────────────────────────────────────────
+  carpark_sign:     '/sprites/utilities/Carpark_1x2_Sign.png',     // 768×1024  1×2 à calibrer
+  carpark_gate:     '/sprites/utilities/Carpark_Fancy_GateUp.png', // 1024×1024 2×2 à calibrer
+  // ── Legacy aliases (compatibilité grids existantes) ───────────────────────
+  tree_sm:          '/sprites/nature/Tree3.png',
+  tree_lg:          '/sprites/nature/Tree14.png',
+  bush:             '/sprites/nature/Palm3.png',
+  park:             '/sprites/deco/Park_Pond.png',
+  ground:           '/sprites/ground/tile-grass.png',
+  tile_concrete:    '/sprites/sidewalks/Sidewalk_Tile1.png',
+  tile_sidewalk:    '/sprites/sidewalks/Sidewalk_Tile1.png',
+  tile_sidewalk_flat: '/sprites/sidewalks/Sidewalk_Tile1.png',
 } as const;
 
 type SpriteKey = keyof typeof SPRITE_PATHS;
@@ -659,7 +696,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
     // Crane for draft projects
     if (state === 'construction') {
-      const craneSprite = getSprite('construction_1x1');
+      const craneSprite = getSprite('crane');
       if (craneSprite) {
         const craneH = bh * 0.6;
         const craneW = craneH * (craneSprite.width / craneSprite.height);
