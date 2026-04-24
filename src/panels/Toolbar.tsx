@@ -4,7 +4,7 @@ import type { PlacementMode } from '../city/CityCanvas';
 
 // ─── Catalogue organisé par onglet ────────────────────────────────────────
 
-type CatalogTab = 'nature' | 'trottoirs' | 'deco' | 'utilities' | 'routes';
+type CatalogTab = 'nature' | 'trottoirs' | 'deco' | 'utilities' | 'routes' | 'clotures';
 
 interface CatalogItem {
   type: CellType;
@@ -68,6 +68,9 @@ const CATALOG: CatalogItem[] = [
   { type: 'street_icecream',      label: 'Glaces',    sprite: '/sprites/utilities/StreetStand_Icecream.png',   size: [1, 1], tab: 'utilities', group: 'Restos' },
   // ── Routes ───────────────────────────────────────────────────────────────
   { type: 'road', label: 'Route', sprite: '/sprites/roads/road-straight-1.png', size: [1, 1], tab: 'routes' },
+  // ── Clôtures ─────────────────────────────────────────────────────────────
+  { type: 'fence_1', label: 'Clôture A', sprite: '/sprites/fences/PicketFence1.png', size: [1, 1], tab: 'clotures' },
+  { type: 'fence_2', label: 'Clôture B', sprite: '/sprites/fences/PicketFence2.png', size: [1, 1], tab: 'clotures' },
 ];
 
 const TABS: { id: CatalogTab; icon: string; label: string }[] = [
@@ -76,6 +79,7 @@ const TABS: { id: CatalogTab; icon: string; label: string }[] = [
   { id: 'deco',      icon: '⛲', label: 'Déco'        },
   { id: 'utilities', icon: '🅿', label: 'Utilitaires' },
   { id: 'routes',    icon: '🛣', label: 'Routes'      },
+  { id: 'clotures',  icon: '🚧', label: 'Clôtures'   },
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────

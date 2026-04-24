@@ -356,6 +356,8 @@ export type CellType =
   | 'restaurant_breakfast' | 'restaurant_pizza' | 'restaurant_ramen'
   | 'restaurant_sandwich'  | 'restaurant_sushi'
   | 'street_flowers' | 'street_icecream'
+  // ── Clôtures (auto-placées sur le périmètre des quartiers) ──────────────────
+  | 'fence_1' | 'fence_2'
   // ── Legacy (compatibilité grids existantes) ────────────────────────────────
   | 'tree_sm' | 'tree_lg' | 'sidewalk' | 'park' | 'bench' | 'fountain' | 'bush';
 
@@ -383,9 +385,14 @@ export const DECORATION_TYPES: Set<CellType> = new Set([
   'restaurant_breakfast', 'restaurant_pizza', 'restaurant_ramen',
   'restaurant_sandwich', 'restaurant_sushi',
   'street_flowers', 'street_icecream',
+  // Clôtures
+  'fence_1', 'fence_2',
   // Legacy
   'tree_sm', 'tree_lg', 'sidewalk', 'park', 'bench', 'fountain', 'bush',
 ]);
+
+/** Fence types — permeable to roads and buildings (can be overwritten) */
+export const FENCE_TYPES: Set<CellType> = new Set(['fence_1', 'fence_2']);
 
 export interface CellContent {
   type: CellType;
@@ -484,6 +491,9 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   restaurant_ramen:     [2, 1], restaurant_sandwich: [2, 1],
   restaurant_sushi:     [2, 1],
   street_flowers: [1, 1], street_icecream: [1, 1],
+  // Clôtures (1×1 — PicketFence1/2, 262×255)
+  fence_1: [1, 1],
+  fence_2: [1, 1],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],
@@ -541,6 +551,21 @@ export function allocateDistrict(grid: GridState, projectId: string): DistrictBo
   const col = slotCol * (DISTRICT_SIZE + DISTRICT_GAP);
   const row = slotRow * (DISTRICT_SIZE + DISTRICT_GAP);
   return { projectId, col, row, size: DISTRICT_SIZE };
+}
+
+/** Remove fence cells from a rectangular area (fences are permeable to roads and buildings) */
+export function clearFencesInArea(grid: GridState, col: number, row: number, w: number, h: number): GridState {
+  let changed = false;
+  const newCells = grid.cells.map((rowArr, r) =>
+    rowArr.map((cell, c) => {
+      if (c >= col && c < col + w && r >= row && r < row + h && cell && FENCE_TYPES.has(cell.type)) {
+        changed = true;
+        return null;
+      }
+      return cell;
+    })
+  );
+  return changed ? { ...grid, cells: newCells } : grid;
 }
 
 /** Check if a rectangle of cells is free */

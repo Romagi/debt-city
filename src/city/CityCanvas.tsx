@@ -141,6 +141,9 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   stadium_football_american: { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   stadium_football_soccer:   { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   stadium_tennis:            { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  // ── Clôtures 1×1 (262×255) ✅ calibrés ───────────────────────────────────
+  picket_fence_1:   { baseRatio: 1.760, yOff: 0.00, xOff:  0.24 },
+  picket_fence_2:   { baseRatio: 1.760, yOff: 0.00, xOff: -0.26 },
   // ── Legacy aliases (grids existantes) — redirects vers nouveaux sprites ───
   tree_sm:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   tree_lg:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
@@ -266,6 +269,9 @@ const SPRITE_PATHS = {
   restaurant_sushi:          '/sprites/utilities/Restaurant_Sushi.png',
   street_flowers:            '/sprites/utilities/StreetStand_Flowers.png',
   street_icecream:           '/sprites/utilities/StreetStand_Icecream.png',
+  // ── Clôtures (1×1 — 262×255px) ───────────────────────────────────────────
+  picket_fence_1:   '/sprites/fences/PicketFence1.png',  // orientation NW-SE (top/bottom)
+  picket_fence_2:   '/sprites/fences/PicketFence2.png',  // orientation NE-SW (left/right)
   // ── Legacy aliases (compatibilité grids existantes) ───────────────────────
   tree_sm:          '/sprites/nature/Tree3.png',
   tree_lg:          '/sprites/nature/Tree14.png',
@@ -376,6 +382,9 @@ const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
   restaurant_sushi:     'restaurant_sushi',
   street_flowers:       'street_flowers',
   street_icecream:      'street_icecream',
+  // ── Clôtures ──────────────────────────────────────────────────────────────
+  fence_1: 'picket_fence_1',
+  fence_2: 'picket_fence_2',
   // ── Legacy aliases ────────────────────────────────────────────────────────
   tree_sm: 'tree_sm',
   tree_lg: 'tree_lg',

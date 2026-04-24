@@ -1,5 +1,6 @@
 import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money, DocumentDrive, CellType } from '../types/portfolio';
-import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace, getDistrictForProject, getDistrictAt, fitsInDistrict, STRUCTURE_SIZES, DECORATION_TYPES } from '../types/portfolio';
+import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace, clearFencesInArea, getDistrictForProject, getDistrictAt, fitsInDistrict, STRUCTURE_SIZES, DECORATION_TYPES } from '../types/portfolio';
+import type { DistrictBounds } from '../types/portfolio';
 
 // ─── Action types ───
 
@@ -80,6 +81,35 @@ function recomputePortfolio(portfolio: Portfolio): Portfolio {
     totalFunding: { amount: totalAmount, currency },
     termStateCount: { breached, late, ending, resultToCheck },
   };
+}
+
+// ─── Fence auto-placement ───
+
+/** Place fences on the perimeter of a newly created district.
+ *  Top/bottom rows → fence_1 (NW-SE orientation)
+ *  Left/right cols → fence_2 (NE-SW orientation, mirrored)
+ *  Only places on empty cells — never overwrites buildings or decos. */
+function placeFencesForDistrict(grid: import('../types/portfolio').GridState, district: DistrictBounds): import('../types/portfolio').GridState {
+  let newGrid = grid;
+  const { col: dc, row: dr, size } = district;
+
+  // Top and bottom rows → fence_1
+  for (let c = dc; c < dc + size; c++) {
+    if (!newGrid.cells[dr]?.[c])
+      newGrid = placeOnGrid(newGrid, c, dr, 1, 1, { type: 'fence_1', entityId: nextId('fence'), projectId: district.projectId });
+    if (!newGrid.cells[dr + size - 1]?.[c])
+      newGrid = placeOnGrid(newGrid, c, dr + size - 1, 1, 1, { type: 'fence_1', entityId: nextId('fence'), projectId: district.projectId });
+  }
+
+  // Left and right cols (skip top/bottom corners already placed) → fence_2
+  for (let r = dr + 1; r < dr + size - 1; r++) {
+    if (!newGrid.cells[r]?.[dc])
+      newGrid = placeOnGrid(newGrid, dc, r, 1, 1, { type: 'fence_2', entityId: nextId('fence'), projectId: district.projectId });
+    if (!newGrid.cells[r]?.[dc + size - 1])
+      newGrid = placeOnGrid(newGrid, dc + size - 1, r, 1, 1, { type: 'fence_2', entityId: nextId('fence'), projectId: district.projectId });
+  }
+
+  return newGrid;
 }
 
 // ─── Reducer ───
@@ -453,6 +483,9 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       const incoming = action.payload.grid;
       // Sync when new districts or structures appear (new deals, initial render)
       if (incoming.districts.length > state.grid.districts.length) {
+        const existingIds = new Set(state.grid.districts.map(d => d.projectId));
+        const newDistricts = incoming.districts.filter(d => !existingIds.has(d.projectId));
+
         // Merge: keep existing cell modifications (moved structures, decorations) but add new districts & their structures
         const newCells = state.grid.cells.map((row, r) =>
           row.map((cell, c) => {
@@ -462,14 +495,15 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
             return incoming.cells[r]?.[c] ?? null;
           })
         );
-        return {
-          ...state,
-          grid: {
-            ...state.grid,
-            cells: newCells,
-            districts: incoming.districts,
-          },
-        };
+
+        let mergedGrid = { ...state.grid, cells: newCells, districts: incoming.districts };
+
+        // Auto-place fences on the perimeter of each new district
+        for (const district of newDistricts) {
+          mergedGrid = placeFencesForDistrict(mergedGrid, district);
+        }
+
+        return { ...state, grid: mergedGrid };
       }
       return state;
     }
@@ -480,6 +514,8 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       if (!district || !fitsInDistrict(district, toCol, toRow, width, height)) return state;
       // Remove structure from current position
       let newGrid = removeFromGrid(state.grid, entityId, structureType);
+      // Clear any fences in target area (fences are permeable to buildings)
+      newGrid = clearFencesInArea(newGrid, toCol, toRow, width, height);
       // Check if target area is free
       if (!canPlace(newGrid, toCol, toRow, width, height)) return state;
       // Place at new position
@@ -500,9 +536,11 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       // If inside a district, must fit within it
       const district = getDistrictAt(state.grid, col, row);
       if (district && !fitsInDistrict(district, col, row, w, h)) return state;
-      if (!canPlace(state.grid, col, row, w, h)) return state;
+      // Clear any fence cells in the target footprint (fences are permeable)
+      const gridWithoutFences = clearFencesInArea(state.grid, col, row, w, h);
+      if (!canPlace(gridWithoutFences, col, row, w, h)) return state;
       const entityId = nextId('deco');
-      const newGrid = placeOnGrid(state.grid, col, row, w, h, {
+      const newGrid = placeOnGrid(gridWithoutFences, col, row, w, h, {
         type: decorationType,
         entityId,
         projectId: projectId || undefined,
