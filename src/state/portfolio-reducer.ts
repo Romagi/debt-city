@@ -603,14 +603,36 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
         projectId: projectId || undefined,
         flip: flip || undefined,
       });
-      // Roads clear fence overlay at the covered cells
+      // Roads clear fence overlay at the covered cells + immediately adjacent paired fences.
+      // District boundaries produce two parallel fence lines (E of district A + W of district B).
+      // Clearing only the road cell would leave one of the two lines. Adjacent clearing fixes this.
       if (decorationType === 'road') {
         const overlay = getOverlay(newGrid).map(r => [...r]) as (FenceOverlayCell | null)[][];
+        const sz = newGrid.size;
+        const clearFence1e = (c: number, r: number) => {
+          if (c < 0 || c >= sz || r < 0 || r >= sz) return;
+          const f = overlay[r][c];
+          if (!f?.fence1_e) return;
+          overlay[r][c] = f.fence2_s ? { fence2_s: true } : null;
+        };
+        const clearFence2s = (c: number, r: number) => {
+          if (c < 0 || c >= sz || r < 0 || r >= sz) return;
+          const f = overlay[r][c];
+          if (!f?.fence2_s) return;
+          overlay[r][c] = f.fence1_e ? { fence1_e: true } : null;
+        };
         for (let dr = row; dr < row + h; dr++) {
           for (let dc = col; dc < col + w; dc++) {
-            if (dr >= 0 && dr < newGrid.size && dc >= 0 && dc < newGrid.size) {
-              overlay[dr][dc] = null;
-            }
+            if (dr < 0 || dr >= sz || dc < 0 || dc >= sz) continue;
+            // Clear this cell entirely
+            overlay[dr][dc] = null;
+            // Also clear the paired fence on adjacent tiles:
+            // fence1_e (SE "/" edge) pairs horizontally — clear W and E neighbours
+            clearFence1e(dc - 1, dr);
+            clearFence1e(dc + 1, dr);
+            // fence2_s (SW "\" edge) pairs vertically — clear N and S neighbours
+            clearFence2s(dc, dr - 1);
+            clearFence2s(dc, dr + 1);
           }
         }
         newGrid = { ...newGrid, fenceOverlay: overlay };

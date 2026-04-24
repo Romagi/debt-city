@@ -343,6 +343,17 @@ interface Props {
 
 const DRAG_THRESHOLD = 4;
 
+/** Sidewalk cell types → sprite key mapping.
+ *  Defined at module level so drawDecorations and drawUnifiedObjects can both reference it. */
+const SIDEWALK_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
+  sidewalk:    'tile_sidewalk_flat',
+  sidewalk_1:  'sidewalk_1',  sidewalk_2:  'sidewalk_2',  sidewalk_3:  'sidewalk_3',
+  sidewalk_4:  'sidewalk_4',  sidewalk_5:  'sidewalk_5',  sidewalk_6:  'sidewalk_6',
+  sidewalk_7:  'sidewalk_7',  sidewalk_8:  'sidewalk_8',  sidewalk_9:  'sidewalk_9',
+  sidewalk_10: 'sidewalk_10', sidewalk_11: 'sidewalk_11',
+  sidewalk_12: 'sidewalk_12', sidewalk_13: 'sidewalk_13',
+};
+
 /** Map CellType to SpriteKey for decoration objects (Layer 3 — objects).
  *  Roads and sidewalks are NOT here — they're handled in the ground/overlay layers. */
 const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
@@ -446,13 +457,20 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.translate(width / 2 + cam.x, height * 0.35 + cam.y);
     ctx.scale(cam.zoom, cam.zoom);
 
-    // Draw grid
+    // Layer 1 — Ground (grass + roads) + hover highlights
     drawGrid(ctx, cityState.grid);
 
-    // Draw decorations (between ground and buildings)
+    // Layer 2 — Sidewalk overlay (flat, on top of ground, below all objects)
     drawDecorations(ctx, cityState.grid);
 
-    for (const district of sortedDistricts) drawDistrict(ctx, district);
+    // Layers 3-5 — Unified depth-sorted pass: decos + fences + buildings
+    drawUnifiedObjects(ctx, cityState.grid);
+
+    // Ghost / eraser preview (always on top of scene objects)
+    drawGhostAndEraser(ctx, cityState.grid);
+
+    // District labels (always on top of everything)
+    for (const district of sortedDistricts) drawDistrictLabel(ctx, district);
 
     // Tooltip — read from ref
     const hovered = hoveredTargetRef.current;
@@ -586,21 +604,9 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     }
   }
 
+  /** Layer 2 — Sidewalk overlay only.
+   *  Flat tiles drawn on top of ground, below all 3-D objects. */
   function drawDecorations(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
-    const hCell = hoveredCellRef.current;
-    const tw = ISO_TILE_W;
-    const th = ISO_TILE_H;
-
-    // ── Layer 2: Overlay — trottoirs (on top of ground, below objects) ──
-    // Covers all sidewalk variants: legacy 'sidewalk' + 'sidewalk_1'…'sidewalk_9'
-    const SIDEWALK_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
-      sidewalk:    'tile_sidewalk_flat',
-      sidewalk_1:  'sidewalk_1',  sidewalk_2:  'sidewalk_2',  sidewalk_3:  'sidewalk_3',
-      sidewalk_4:  'sidewalk_4',  sidewalk_5:  'sidewalk_5',  sidewalk_6:  'sidewalk_6',
-      sidewalk_7:  'sidewalk_7',  sidewalk_8:  'sidewalk_8',  sidewalk_9:  'sidewalk_9',
-      sidewalk_10: 'sidewalk_10', sidewalk_11: 'sidewalk_11',
-      sidewalk_12: 'sidewalk_12', sidewalk_13: 'sidewalk_13',
-    };
     const sidewalkCells: { col: number; row: number; type: CellType }[] = [];
     for (let r = 0; r < grid.size; r++) {
       for (let c = 0; c < grid.size; c++) {
@@ -619,55 +625,55 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       drawSpriteOnGrid(ctx, spriteKey);
       ctx.restore();
     }
+  }
 
-    // ── Layer 3: Objects — decoration sprites (trees, park, bush…) ──
-    // Roads and sidewalks are excluded — they live in layers 1 and 2.
-    const decos: { col: number; row: number; type: CellType; flip: boolean }[] = [];
+  /** Layers 3-5 — Unified depth-sorted pass.
+   *
+   *  Collects ALL visual objects — decoration sprites, fence overlay cells, and building
+   *  sub-sprites — into a single list keyed by their south-tip screen Y.  Sorting that
+   *  list ascending gives the correct painter's-algorithm order so that objects further
+   *  south (higher screen Y) are always drawn on top, regardless of type.
+   *
+   *  Previous bug: fences lived in a separate "Layer 4" loop that ran after all decos,
+   *  and buildings ran in a separate `drawDistrict` pass after that — so fences were
+   *  always in front of trees and buildings were always in front of everything.
+   */
+  function drawUnifiedObjects(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
+    const items: Array<{ sortY: number; draw: () => void }> = [];
+
+    // ── 1. Decoration objects from grid.cells (trees, utilities, fences placed by user…) ──
     for (let r = 0; r < grid.size; r++) {
       for (let c = 0; c < grid.size; c++) {
         const cell = grid.cells[r]?.[c];
         if (
-          cell &&
-          DECORATION_TYPES.has(cell.type) &&
-          cell.type !== 'road' &&
-          !(cell.type in SIDEWALK_SPRITE_MAP) &&
-          cell.originCol == null &&
-          cell.originRow == null
-        ) {
-          decos.push({ col: c, row: r, type: cell.type, flip: cell.flip ?? false });
-        }
+          !cell ||
+          !DECORATION_TYPES.has(cell.type) ||
+          cell.type === 'road' ||
+          (cell.type in SIDEWALK_SPRITE_MAP) ||
+          cell.originCol != null ||
+          cell.originRow != null
+        ) continue;
+        const spriteKey = DECO_SPRITE_MAP[cell.type];
+        if (!spriteKey) continue;
+        const rawSize = STRUCTURE_SIZES[cell.type] ?? [1, 1] as [number, number];
+        const flip = cell.flip ?? false;
+        const [fw, fh] = (flip && rawSize[0] !== rawSize[1]) ? [rawSize[1], rawSize[0]] : rawSize;
+        // South tip = anchor point, same formula as calibrate.html
+        const { x, y } = gridToScreen(c + fw - 0.5, r + fh - 0.5);
+        const sortY = y;
+        // Capture loop variables explicitly to avoid closure pitfalls
+        const _x = x, _y = y, _sk = spriteKey, _flip = flip;
+        items.push({ sortY, draw: () => {
+          ctx.save(); ctx.translate(_x, _y); drawSpriteOnGrid(ctx, _sk, _flip); ctx.restore();
+        }});
       }
     }
-    decos.sort((a, b) => (a.row + a.col) - (b.row + b.col));
 
-    for (const d of decos) {
-      const spriteKey = DECO_SPRITE_MAP[d.type];
-      if (!spriteKey) continue;
-      const rawSize = STRUCTURE_SIZES[d.type] ?? [1, 1] as [number, number];
-      // Flip permutes the footprint: 2×1 becomes 1×2, anchor recalculated accordingly
-      const [fw, fh] = (d.flip && rawSize[0] !== rawSize[1]) ? [rawSize[1], rawSize[0]] : rawSize;
-      // Anchor = south tip of footprint, same formula as calibrate.html:
-      // g2s(col + footCols - 0.5, row + footRows - 0.5)
-      const { x, y } = gridToScreen(d.col + fw - 0.5, d.row + fh - 0.5);
-      ctx.save();
-      ctx.translate(x, y);
-      drawSpriteOnGrid(ctx, spriteKey, d.flip);
-      ctx.restore();
-    }
-
-    // ── Layer 4: Fence overlay — rendu au CENTRE de la tuile (tile-center) ───
+    // ── 2. Fence overlay — rendered at tile-centre, keyed by that centre's screen Y ──
     //
-    //  fence1_e → PicketFence1, xOff=+0.24 → décale vers l'arête SE ("/").
-    //    Tuile W boundary (dc-1)  : SE edge of gap tile  = visual left district wall ✓
-    //    Tuile E boundary (dc+S-1): SE edge of last tile  = visual right district wall ✓
-    //
-    //  fence2_s → PicketFence2, xOff=-0.26 → décale vers l'arête SW ("\").
-    //    Tuile N boundary (dr-1)  : SW edge of gap tile  = visual top district wall ✓
-    //    Tuile S boundary (dr+S-1): SW edge of last tile  = visual bottom district wall ✓
-    //
-    //  Z-order : loop r-ascendant → E fence (row=dr) dessiné après N fence (row=dr-1)
-    //  → E visible devant N à l'angle NE. ✓
-    //  Cumulation arbres/décos dans cells[][] : automatique (layers indépendants).
+    //  fence1_e (PicketFence1, xOff=+0.24) → SE "/" edge.
+    //  fence2_s (PicketFence2, xOff=-0.26) → SW "\" edge.
+    //  On the same tile, fence2_s gets +0.5 so it draws on top of fence1_e at NE corner.
     if (grid.fenceOverlay) {
       for (let r = 0; r < grid.size; r++) {
         for (let c = 0; c < grid.size; c++) {
@@ -675,24 +681,66 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           if (!fence || (!fence.fence1_e && !fence.fence2_s)) continue;
           const { x: cx, y: cy } = gridToScreen(c + 0.5, r + 0.5);
           if (fence.fence1_e) {
-            ctx.save(); ctx.translate(cx, cy);
-            drawSpriteOnGrid(ctx, 'picket_fence_1');
-            ctx.restore();
+            const _cx = cx, _cy = cy;
+            items.push({ sortY: cy, draw: () => {
+              ctx.save(); ctx.translate(_cx, _cy); drawSpriteOnGrid(ctx, 'picket_fence_1'); ctx.restore();
+            }});
           }
           if (fence.fence2_s) {
-            ctx.save(); ctx.translate(cx, cy);
-            drawSpriteOnGrid(ctx, 'picket_fence_2');
-            ctx.restore();
+            const _cx = cx, _cy = cy;
+            items.push({ sortY: cy + 0.5, draw: () => {
+              ctx.save(); ctx.translate(_cx, _cy); drawSpriteOnGrid(ctx, 'picket_fence_2'); ctx.restore();
+            }});
           }
         }
       }
     }
 
-    // ── Ghost preview for placement mode ─────────────────────────────
+    // ── 3. Building sub-sprites — each sub-structure keyed by its south-tip screen Y ──
+    for (const district of sortedDistricts) {
+      for (const building of district.buildings) {
+        // Library (2×2 — upper-left of district)
+        const _lib = building;
+        items.push({ sortY: building.libraryPos.y, draw: () => {
+          if (_lib.project.documents.length > 0) drawLibrary(ctx, _lib);
+          else drawEmptyLot(ctx, _lib.libraryPos, 'construction_2x2');
+        }});
+
+        // Townhall (2×2 — left of main building)
+        const _th = building;
+        items.push({ sortY: building.townhallPos.y, draw: () => {
+          if (_th.project.covenants.length > 0) drawTownhall(ctx, _th);
+          else drawEmptyLot(ctx, _th.townhallPos, 'construction_2x2');
+        }});
+
+        // Main building (center)
+        const _b = building;
+        items.push({ sortY: building.y, draw: () => drawBuilding(ctx, _b) });
+
+        // Shop / syndicate (right — front-most)
+        const _sh = building;
+        items.push({ sortY: building.shopPos.y, draw: () => {
+          if (_sh.syndicateSize !== 'none') drawShop(ctx, _sh);
+          else drawEmptyLot(ctx, _sh.shopPos, 'construction_1x1');
+        }});
+      }
+    }
+
+    // Sort ascending screen Y → correct painter's order (back → front)
+    items.sort((a, b) => a.sortY - b.sortY);
+    for (const { draw } of items) draw();
+  }
+
+  /** Ghost preview + eraser highlight — drawn on top of all scene objects. */
+  function drawGhostAndEraser(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
+    const hCell = hoveredCellRef.current;
+    const tw = ISO_TILE_W;
+    const th = ISO_TILE_H;
+
+    // Ghost preview for placement mode
     if (placementMode && !placementMode.eraser && hCell) {
       const ghostFlip = placementMode.flip ?? false;
       const rawGhostSize = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1] as [number, number];
-      // Permute footprint when flipped (2×1 → 1×2)
       const [pw, ph] = (ghostFlip && rawGhostSize[0] !== rawGhostSize[1])
         ? [rawGhostSize[1], rawGhostSize[0]]
         : rawGhostSize;
@@ -700,18 +748,15 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       const gr = hCell.row - Math.floor(ph / 2);
       const district = getDistrictAt(grid, hCell.col, hCell.row);
       const fitsDistrict = district ? fitsInDistrict(district, gc, gr, pw, ph) : true;
-      // Roads can always be placed (no district restriction), other decos need district
       const valid = placementMode.deco === 'road'
         ? canPlace(grid, gc, gr, pw, ph)
         : fitsDistrict && canPlace(grid, gc, gr, pw, ph);
 
-      // Ghost sprite key — road uses a straight EW preview
       const ghostSpriteKey: SpriteKey | undefined = placementMode.deco === 'road'
         ? 'road_straight_2'
         : DECO_SPRITE_MAP[placementMode.deco];
 
       if (ghostSpriteKey) {
-        // Draw sprite at 60% alpha — same anchor formula as calibrate.html
         const { x, y } = gridToScreen(gc + pw - 0.5, gr + ph - 0.5);
         ctx.save();
         ctx.globalAlpha = 0.6;
@@ -720,15 +765,12 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         ctx.restore();
       }
 
-      // Diamond footprint outline (valid / invalid colour)
       for (let dc = gc; dc < gc + pw; dc++) {
         for (let dr = gr; dr < gr + ph; dr++) {
           const { x, y } = gridToScreen(dc, dr);
           ctx.beginPath();
-          ctx.moveTo(x, y - th / 2);
-          ctx.lineTo(x + tw / 2, y);
-          ctx.lineTo(x, y + th / 2);
-          ctx.lineTo(x - tw / 2, y);
+          ctx.moveTo(x, y - th / 2); ctx.lineTo(x + tw / 2, y);
+          ctx.lineTo(x, y + th / 2); ctx.lineTo(x - tw / 2, y);
           ctx.closePath();
           ctx.fillStyle = valid ? 'rgba(80,220,80,0.18)' : 'rgba(220,60,60,0.18)';
           ctx.fill();
@@ -755,16 +797,11 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
             for (let dr = or_; dr < or_ + fh; dr++) {
               const { x, y } = gridToScreen(dc, dr);
               ctx.beginPath();
-              ctx.moveTo(x, y - th / 2);
-              ctx.lineTo(x + tw / 2, y);
-              ctx.lineTo(x, y + th / 2);
-              ctx.lineTo(x - tw / 2, y);
+              ctx.moveTo(x, y - th / 2); ctx.lineTo(x + tw / 2, y);
+              ctx.lineTo(x, y + th / 2); ctx.lineTo(x - tw / 2, y);
               ctx.closePath();
-              ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
-              ctx.fill();
-              ctx.strokeStyle = 'rgba(255, 80, 80, 0.6)';
-              ctx.lineWidth = 1;
-              ctx.stroke();
+              ctx.fillStyle = 'rgba(255, 80, 80, 0.3)'; ctx.fill();
+              ctx.strokeStyle = 'rgba(255, 80, 80, 0.6)'; ctx.lineWidth = 1; ctx.stroke();
             }
           }
         }
@@ -772,31 +809,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     }
   }
 
-  function drawDistrict(ctx: CanvasRenderingContext2D, district: CityDistrict) {
-    for (const building of district.buildings) {
-      // 3. Library (behind, upper-left) — single model: library_md (2×2)
-      if (building.project.documents.length > 0) {
-        drawLibrary(ctx, building);
-      } else {
-        drawEmptyLot(ctx, building.libraryPos, 'construction_2x2');
-      }
-      // 4. Townhall / mairie (left) — 2×2
-      if (building.project.covenants.length > 0) {
-        drawTownhall(ctx, building);
-      } else {
-        drawEmptyLot(ctx, building.townhallPos, 'construction_2x2');
-      }
-      // 5. Main building (center)
-      drawBuilding(ctx, building);
-      // 6. Shop / syndicate (right, front-most) — size varies
-      if (building.syndicateSize !== 'none') {
-        drawShop(ctx, building);
-      } else {
-        drawEmptyLot(ctx, building.shopPos, 'construction_1x1');
-      }
-    }
-
-    // District label
+  /** District label — drawn after the unified object pass so it always appears on top. */
+  function drawDistrictLabel(ctx: CanvasRenderingContext2D, district: CityDistrict) {
     const b = district.buildings[0];
     if (!b) return;
     const labelX = b.x;
