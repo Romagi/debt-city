@@ -92,16 +92,16 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   sidewalk_8:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   sidewalk_9:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   // Nature 1×1 ✅ calibré
-  tree_palm:        { baseRatio: 1.000, yOff: -0.32, xOff:  0.00 },  // 152×224
-  tree_3:           { baseRatio: 1.385, yOff: -0.32, xOff:  0.00 },  // 154×227
-  tree_14:          { baseRatio: 1.385, yOff: -0.32, xOff:  0.00 },  // 154×224
+  tree_palm:        { baseRatio: 1.970, yOff: -0.32, xOff:  0.00 },  // 152×224
+  tree_3:           { baseRatio: 1.970, yOff: -0.32, xOff:  0.00 },  // 154×227
+  tree_14:          { baseRatio: 1.970, yOff: -0.32, xOff:  0.00 },  // 154×224
   // ── Footprint 2×1 — calibrés ─────────────────────────────────────────────
   building_sm:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },  // ✅ calibré
   building_md:      { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
   shop_store:       { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
   construction_2x1: { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
   // ── Footprint 2×1 ─────────────────────────────────────────────────────────
-  carpark_sign:     { baseRatio: 1.000, yOff: 0.44, xOff: -0.25 },  // 768×1024 ✅ calibré
+  carpark_sign:     { baseRatio: 1.000, yOff: 0.46, xOff: -0.25 },  // 768×1024 ✅ calibré
   // ── Footprint 2×2 — calibrés ─────────────────────────────────────────────
   building_lg:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
   building_xl:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // ✅ calibré
@@ -109,9 +109,9 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   shop_mall:        { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
   library_md:       { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
   construction_2x2: { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
-  park_fountain:    { baseRatio: 1.000, yOff: 0.50, xOff:  0.00 },  // 1024×768  ✅ calibré
-  park_pond:        { baseRatio: 1.000, yOff: 0.50, xOff:  0.00 },  // 1024×1024 ✅ calibré
-  carpark_gate:     { baseRatio: 0.985, yOff: 0.48, xOff:  0.00 },  // 1024×1024 ✅ calibré
+  park_fountain:    { baseRatio: 1.000, yOff: 0.46, xOff:  0.00 },  // 1024×768  ✅ calibré
+  park_pond:        { baseRatio: 1.000, yOff: 0.46, xOff:  0.00 },  // 1024×1024 ✅ calibré
+  carpark_gate:     { baseRatio: 1.000, yOff: 0.46, xOff:  0.00 },  // 1024×1024 ✅ calibré
   // ── Legacy aliases (grids existantes) — redirects vers nouveaux sprites ───
   tree_sm:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   tree_lg:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
@@ -278,8 +278,19 @@ interface Props {
 const DRAG_THRESHOLD = 4;
 
 /** Map CellType to SpriteKey for decoration objects (Layer 3 — objects).
- *  Roads and sidewalk are NOT here — they're handled in the ground/overlay layers. */
+ *  Roads and sidewalks are NOT here — they're handled in the ground/overlay layers. */
 const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
+  // ── Nature ────────────────────────────────────────────────────────────────
+  tree_palm:    'tree_palm',
+  tree_3:       'tree_3',
+  tree_14:      'tree_14',
+  // ── Décorations ──────────────────────────────────────────────────────────
+  park_fountain: 'park_fountain',
+  park_pond:     'park_pond',
+  // ── Utilitaires ───────────────────────────────────────────────────────────
+  carpark_sign:  'carpark_sign',
+  carpark_gate:  'carpark_gate',
+  // ── Legacy aliases ────────────────────────────────────────────────────────
   tree_sm: 'tree_sm',
   tree_lg: 'tree_lg',
   park:    'park',
@@ -485,19 +496,30 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     const tw = ISO_TILE_W;
     const th = ISO_TILE_H;
 
-    // ── Layer 2: Overlay — sidewalk flat (on top of ground, below objects) ──
-    const sidewalkCells: { col: number; row: number }[] = [];
+    // ── Layer 2: Overlay — trottoirs (on top of ground, below objects) ──
+    // Covers all sidewalk variants: legacy 'sidewalk' + 'sidewalk_1'…'sidewalk_9'
+    const SIDEWALK_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
+      sidewalk:   'tile_sidewalk_flat',
+      sidewalk_1: 'sidewalk_1', sidewalk_2: 'sidewalk_2', sidewalk_3: 'sidewalk_3',
+      sidewalk_4: 'sidewalk_4', sidewalk_5: 'sidewalk_5', sidewalk_6: 'sidewalk_6',
+      sidewalk_7: 'sidewalk_7', sidewalk_8: 'sidewalk_8', sidewalk_9: 'sidewalk_9',
+    };
+    const sidewalkCells: { col: number; row: number; type: CellType }[] = [];
     for (let r = 0; r < grid.size; r++) {
       for (let c = 0; c < grid.size; c++) {
-        if (grid.cells[r]?.[c]?.type === 'sidewalk') sidewalkCells.push({ col: c, row: r });
+        const cell = grid.cells[r]?.[c];
+        if (cell && cell.type in SIDEWALK_SPRITE_MAP) {
+          sidewalkCells.push({ col: c, row: r, type: cell.type });
+        }
       }
     }
     sidewalkCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
-    for (const { col, row } of sidewalkCells) {
+    for (const { col, row, type } of sidewalkCells) {
+      const spriteKey = SIDEWALK_SPRITE_MAP[type] ?? 'tile_sidewalk_flat';
       const { x, y } = gridToScreen(col + 0.5, row + 0.5);
       ctx.save();
       ctx.translate(x, y);
-      drawSpriteOnGrid(ctx, 'tile_sidewalk_flat');
+      drawSpriteOnGrid(ctx, spriteKey);
       ctx.restore();
     }
 
@@ -511,7 +533,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           cell &&
           DECORATION_TYPES.has(cell.type) &&
           cell.type !== 'road' &&
-          cell.type !== 'sidewalk' &&
+          !(cell.type in SIDEWALK_SPRITE_MAP) &&
           cell.originCol == null &&
           cell.originRow == null
         ) {

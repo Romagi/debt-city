@@ -330,9 +330,38 @@ export const DISTRICT_SIZE = 12; // 12×12 tiles per district
 export const DISTRICT_GAP = 1; // gap between districts (for roads)
 export const DISTRICT_COLS = 4; // districts per row
 
-export type CellType = 'building' | 'townhall' | 'shop' | 'library' | 'tree_sm' | 'tree_lg' | 'road' | 'sidewalk' | 'park' | 'bench' | 'fountain' | 'bush';
+export type CellType =
+  // ── Bâtiments (auto-générés) ──────────────────────────────────────────────
+  | 'building' | 'townhall' | 'shop' | 'library'
+  // ── Routes ────────────────────────────────────────────────────────────────
+  | 'road'
+  // ── Trottoirs (9 variantes plaçables) ────────────────────────────────────
+  | 'sidewalk_1' | 'sidewalk_2' | 'sidewalk_3' | 'sidewalk_4' | 'sidewalk_5'
+  | 'sidewalk_6' | 'sidewalk_7' | 'sidewalk_8' | 'sidewalk_9'
+  // ── Nature ────────────────────────────────────────────────────────────────
+  | 'tree_palm' | 'tree_3' | 'tree_14'
+  // ── Décorations ──────────────────────────────────────────────────────────
+  | 'park_fountain' | 'park_pond'
+  // ── Utilitaires ───────────────────────────────────────────────────────────
+  | 'carpark_sign' | 'carpark_gate'
+  // ── Legacy (compatibilité grids existantes) ────────────────────────────────
+  | 'tree_sm' | 'tree_lg' | 'sidewalk' | 'park' | 'bench' | 'fountain' | 'bush';
 
-export const DECORATION_TYPES: Set<CellType> = new Set(['tree_sm', 'tree_lg', 'road', 'sidewalk', 'park', 'bench', 'fountain', 'bush']);
+export const DECORATION_TYPES: Set<CellType> = new Set([
+  // Routes
+  'road',
+  // Trottoirs
+  'sidewalk_1', 'sidewalk_2', 'sidewalk_3', 'sidewalk_4', 'sidewalk_5',
+  'sidewalk_6', 'sidewalk_7', 'sidewalk_8', 'sidewalk_9',
+  // Nature
+  'tree_palm', 'tree_3', 'tree_14',
+  // Décorations
+  'park_fountain', 'park_pond',
+  // Utilitaires
+  'carpark_sign', 'carpark_gate',
+  // Legacy
+  'tree_sm', 'tree_lg', 'sidewalk', 'park', 'bench', 'fountain', 'bush',
+]);
 
 export interface CellContent {
   type: CellType;
