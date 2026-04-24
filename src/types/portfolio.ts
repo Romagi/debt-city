@@ -412,10 +412,21 @@ export interface DistrictBounds {
   size: number; // always DISTRICT_SIZE (20)
 }
 
+/** Per-cell fence overlay — independent of the main cells grid.
+ *  nwse = orientation NW-SE (left/right columns of a district).
+ *  nesw = orientation NE-SW (top/bottom rows of a district).
+ *  Both can be true on the same cell (corners). */
+export interface FenceOverlayCell {
+  nwse?: boolean;
+  nesw?: boolean;
+}
+
 export interface GridState {
   cells: (CellContent | null)[][];
   size: number;
   districts: DistrictBounds[];
+  /** Fence overlay — stores fences independently, allowing multiple per tile. */
+  fenceOverlay?: (FenceOverlayCell | null)[][];
 }
 
 /** How many grid cells each structure type occupies [cols, rows]

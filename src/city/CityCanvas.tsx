@@ -655,6 +655,23 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       ctx.restore();
     }
 
+    // ── Layer 4: Fence overlay — drawn above objects, supports multi per tile ──
+    if (grid.fenceOverlay) {
+      for (let r = 0; r < grid.size; r++) {
+        for (let c = 0; c < grid.size; c++) {
+          const fence = grid.fenceOverlay[r]?.[c];
+          if (!fence || (!fence.nwse && !fence.nesw)) continue;
+          // South-tip anchor for 1×1: gridToScreen(c+0.5, r+0.5)
+          const { x, y } = gridToScreen(c + 0.5, r + 0.5);
+          ctx.save();
+          ctx.translate(x, y);
+          if (fence.nwse) drawSpriteOnGrid(ctx, 'picket_fence_1');
+          if (fence.nesw) drawSpriteOnGrid(ctx, 'picket_fence_2');
+          ctx.restore();
+        }
+      }
+    }
+
     // ── Ghost preview for placement mode ─────────────────────────────
     if (placementMode && !placementMode.eraser && hCell) {
       const ghostFlip = placementMode.flip ?? false;

@@ -83,33 +83,41 @@ function recomputePortfolio(portfolio: Portfolio): Portfolio {
   };
 }
 
-// ─── Fence auto-placement ───
+// ─── Fence overlay helpers ───
 
-/** Place fences on the perimeter of a newly created district.
- *  Top/bottom rows → fence_1 (NW-SE orientation)
- *  Left/right cols → fence_2 (NE-SW orientation, mirrored)
- *  Only places on empty cells — never overwrites buildings or decos. */
-function placeFencesForDistrict(grid: import('../types/portfolio').GridState, district: DistrictBounds): import('../types/portfolio').GridState {
-  let newGrid = grid;
+type GridState = import('../types/portfolio').GridState;
+import type { FenceOverlayCell } from '../types/portfolio';
+
+function getOverlay(grid: GridState): (FenceOverlayCell | null)[][] {
+  return grid.fenceOverlay ?? Array.from({ length: grid.size }, () => Array(grid.size).fill(null));
+}
+
+/** Write fences onto the fenceOverlay for a district's perimeter.
+ *  nwse (NW-SE) → left and right columns (fence runs parallel to those edges).
+ *  nesw (NE-SW) → top and bottom rows (fence runs parallel to those edges).
+ *  Corner cells get both flags → both fence sprites rendered. */
+function placeFencesForDistrict(grid: GridState, district: DistrictBounds): GridState {
   const { col: dc, row: dr, size } = district;
+  const overlay = getOverlay(grid).map(r => [...r]) as (FenceOverlayCell | null)[][];
 
-  // Top and bottom rows → fence_1
+  const set = (c: number, r: number, patch: FenceOverlayCell) => {
+    if (r < 0 || r >= grid.size || c < 0 || c >= grid.size) return;
+    overlay[r][c] = { ...overlay[r][c], ...patch };
+  };
+
+  // Top and bottom rows → nesw (NE-SW orientation)
   for (let c = dc; c < dc + size; c++) {
-    if (!newGrid.cells[dr]?.[c])
-      newGrid = placeOnGrid(newGrid, c, dr, 1, 1, { type: 'fence_1', entityId: nextId('fence'), projectId: district.projectId });
-    if (!newGrid.cells[dr + size - 1]?.[c])
-      newGrid = placeOnGrid(newGrid, c, dr + size - 1, 1, 1, { type: 'fence_1', entityId: nextId('fence'), projectId: district.projectId });
+    set(c, dr,           { nesw: true });
+    set(c, dr + size - 1, { nesw: true });
   }
-
-  // Left and right cols (skip top/bottom corners already placed) → fence_2
-  for (let r = dr + 1; r < dr + size - 1; r++) {
-    if (!newGrid.cells[r]?.[dc])
-      newGrid = placeOnGrid(newGrid, dc, r, 1, 1, { type: 'fence_2', entityId: nextId('fence'), projectId: district.projectId });
-    if (!newGrid.cells[r]?.[dc + size - 1])
-      newGrid = placeOnGrid(newGrid, dc + size - 1, r, 1, 1, { type: 'fence_2', entityId: nextId('fence'), projectId: district.projectId });
+  // Left and right cols → nwse (NW-SE orientation)
+  for (let r = dr; r < dr + size; r++) {
+    set(dc,           r, { nwse: true });
+    set(dc + size - 1, r, { nwse: true });
   }
+  // Corners already have both flags set from the two loops above
 
-  return newGrid;
+  return { ...grid, fenceOverlay: overlay };
 }
 
 // ─── Reducer ───
@@ -531,17 +539,24 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
     // ── Decorations ──
     case 'PLACE_DECORATION': {
       const { decorationType, col, row, projectId, flip } = action.payload;
+
+      // Fence types go to the overlay instead of the main grid
+      if (decorationType === 'fence_1' || decorationType === 'fence_2') {
+        const overlay = getOverlay(state.grid).map(r => [...r]) as (FenceOverlayCell | null)[][];
+        const patch: FenceOverlayCell = decorationType === 'fence_1' ? { nwse: true } : { nesw: true };
+        overlay[row][col] = { ...overlay[row][col], ...patch };
+        return { ...state, grid: { ...state.grid, fenceOverlay: overlay } };
+      }
+
       const rawSize = STRUCTURE_SIZES[decorationType] ?? [1, 1];
       // Permute footprint when flipped (e.g. 2×1 → 1×2)
       const [w, h] = (flip && rawSize[0] !== rawSize[1]) ? [rawSize[1], rawSize[0]] : rawSize;
       // If inside a district, must fit within it
       const district = getDistrictAt(state.grid, col, row);
       if (district && !fitsInDistrict(district, col, row, w, h)) return state;
-      // Clear any fence cells in the target footprint (fences are permeable)
-      const gridWithoutFences = clearFencesInArea(state.grid, col, row, w, h);
-      if (!canPlace(gridWithoutFences, col, row, w, h)) return state;
+      if (!canPlace(state.grid, col, row, w, h)) return state;
       const entityId = nextId('deco');
-      const newGrid = placeOnGrid(gridWithoutFences, col, row, w, h, {
+      const newGrid = placeOnGrid(state.grid, col, row, w, h, {
         type: decorationType,
         entityId,
         projectId: projectId || undefined,
@@ -551,6 +566,15 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
     }
     case 'REMOVE_DECORATION': {
       const { col, row } = action.payload;
+
+      // If the cell has fence overlay entries, clear them first / instead
+      const fenceCell = state.grid.fenceOverlay?.[row]?.[col];
+      if (fenceCell && (fenceCell.nwse || fenceCell.nesw)) {
+        const overlay = state.grid.fenceOverlay!.map(r => [...r]) as (FenceOverlayCell | null)[][];
+        overlay[row][col] = null;
+        return { ...state, grid: { ...state.grid, fenceOverlay: overlay } };
+      }
+
       const cell = state.grid.cells[row]?.[col];
       if (!cell) return state;
       // Find origin cell
