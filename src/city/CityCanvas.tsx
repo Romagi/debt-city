@@ -547,9 +547,9 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       const spriteKey = DECO_SPRITE_MAP[d.type];
       if (!spriteKey) continue;
       const [fw, fh] = STRUCTURE_SIZES[d.type] ?? [1, 1];
-      const cx = d.col + fw / 2;
-      const cy = d.row + fh / 2;
-      const { x, y } = gridToScreen(cx, cy);
+      // Anchor = south tip of footprint, same formula as calibrate.html:
+      // g2s(col + footCols - 0.5, row + footRows - 0.5)
+      const { x, y } = gridToScreen(d.col + fw - 0.5, d.row + fh - 0.5);
       ctx.save();
       ctx.translate(x, y);
       drawSpriteOnGrid(ctx, spriteKey);
@@ -574,10 +574,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         : DECO_SPRITE_MAP[placementMode.deco];
 
       if (ghostSpriteKey) {
-        // Draw sprite at 60% alpha
-        const cx = gc + pw / 2;
-        const cy = gr + ph / 2;
-        const { x, y } = gridToScreen(cx, cy);
+        // Draw sprite at 60% alpha — same anchor formula as calibrate.html
+        const { x, y } = gridToScreen(gc + pw - 0.5, gr + ph - 0.5);
         ctx.save();
         ctx.globalAlpha = 0.6;
         ctx.translate(x, y);
