@@ -59,6 +59,21 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
   const [modal, setModal] = useState<ModalState>(null);
   const [placementMode, setPlacementMode] = useState<PlacementMode | null>(null);
 
+  // F key → toggle flip while placing a decoration
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if ((e.key === 'f' || e.key === 'F') && placementMode && !placementMode.eraser) {
+        setPlacementMode(prev => prev ? { ...prev, flip: !prev.flip } : prev);
+      }
+      if (e.key === 'Escape' && placementMode) {
+        setPlacementMode(null);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [placementMode]);
+
   // Auto-save to localStorage
   const { status: saveStatus } = useAutoSave(slug, portfolio);
 
@@ -93,7 +108,7 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
         placementMode={placementMode}
         onPlaceDecoration={(col, row, projectId) => {
           if (placementMode?.deco) {
-            dispatch({ type: 'PLACE_DECORATION', payload: { decorationType: placementMode.deco, col, row, projectId } });
+            dispatch({ type: 'PLACE_DECORATION', payload: { decorationType: placementMode.deco, col, row, projectId, flip: placementMode.flip } });
           }
         }}
         onRemoveDecoration={(col, row) => {
@@ -137,9 +152,10 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
 
       <Toolbar
         placementMode={placementMode}
-        onSelectItem={(deco) => setPlacementMode({ deco, eraser: false })}
+        onSelectItem={(deco) => setPlacementMode({ deco, eraser: false, flip: false })}
         onErase={() => setPlacementMode({ deco: 'tree_sm', eraser: true })}
         onCancel={() => setPlacementMode(null)}
+        onFlip={() => setPlacementMode(prev => prev ? { ...prev, flip: !prev.flip } : prev)}
       />
 
       <PortfolioOverview portfolio={portfolio} />

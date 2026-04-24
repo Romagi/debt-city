@@ -335,15 +335,27 @@ export type CellType =
   | 'building' | 'townhall' | 'shop' | 'library'
   // ── Routes ────────────────────────────────────────────────────────────────
   | 'road'
-  // ── Trottoirs (9 variantes plaçables) ────────────────────────────────────
-  | 'sidewalk_1' | 'sidewalk_2' | 'sidewalk_3' | 'sidewalk_4' | 'sidewalk_5'
-  | 'sidewalk_6' | 'sidewalk_7' | 'sidewalk_8' | 'sidewalk_9'
+  // ── Trottoirs (13 variantes plaçables) ───────────────────────────────────
+  | 'sidewalk_1'  | 'sidewalk_2'  | 'sidewalk_3'  | 'sidewalk_4'  | 'sidewalk_5'
+  | 'sidewalk_6'  | 'sidewalk_7'  | 'sidewalk_8'  | 'sidewalk_9'
+  | 'sidewalk_10' | 'sidewalk_11' | 'sidewalk_12' | 'sidewalk_13'
   // ── Nature ────────────────────────────────────────────────────────────────
   | 'tree_palm' | 'tree_3' | 'tree_14'
   // ── Décorations ──────────────────────────────────────────────────────────
   | 'park_fountain' | 'park_pond'
-  // ── Utilitaires ───────────────────────────────────────────────────────────
+  // ── Utilitaires — Parking ─────────────────────────────────────────────────
   | 'carpark_sign' | 'carpark_gate'
+  // ── Utilitaires — Services ────────────────────────────────────────────────
+  | 'bar' | 'hospital' | 'post_office' | 'recycling' | 'gas_station' | 'tele_tower'
+  // ── Utilitaires — Urgences ────────────────────────────────────────────────
+  | 'fire_station' | 'police_station' | 'prison'
+  // ── Utilitaires — Loisirs ─────────────────────────────────────────────────
+  | 'cinema' | 'museum'
+  | 'stadium_athletics' | 'stadium_football_american' | 'stadium_football_soccer' | 'stadium_tennis'
+  // ── Utilitaires — Restauration ────────────────────────────────────────────
+  | 'restaurant_breakfast' | 'restaurant_pizza' | 'restaurant_ramen'
+  | 'restaurant_sandwich'  | 'restaurant_sushi'
+  | 'street_flowers' | 'street_icecream'
   // ── Legacy (compatibilité grids existantes) ────────────────────────────────
   | 'tree_sm' | 'tree_lg' | 'sidewalk' | 'park' | 'bench' | 'fountain' | 'bush';
 
@@ -351,14 +363,26 @@ export const DECORATION_TYPES: Set<CellType> = new Set([
   // Routes
   'road',
   // Trottoirs
-  'sidewalk_1', 'sidewalk_2', 'sidewalk_3', 'sidewalk_4', 'sidewalk_5',
-  'sidewalk_6', 'sidewalk_7', 'sidewalk_8', 'sidewalk_9',
+  'sidewalk_1',  'sidewalk_2',  'sidewalk_3',  'sidewalk_4',  'sidewalk_5',
+  'sidewalk_6',  'sidewalk_7',  'sidewalk_8',  'sidewalk_9',
+  'sidewalk_10', 'sidewalk_11', 'sidewalk_12', 'sidewalk_13',
   // Nature
   'tree_palm', 'tree_3', 'tree_14',
   // Décorations
   'park_fountain', 'park_pond',
-  // Utilitaires
+  // Utilitaires — Parking
   'carpark_sign', 'carpark_gate',
+  // Utilitaires — Services
+  'bar', 'hospital', 'post_office', 'recycling', 'gas_station', 'tele_tower',
+  // Utilitaires — Urgences
+  'fire_station', 'police_station', 'prison',
+  // Utilitaires — Loisirs
+  'cinema', 'museum',
+  'stadium_athletics', 'stadium_football_american', 'stadium_football_soccer', 'stadium_tennis',
+  // Utilitaires — Restauration
+  'restaurant_breakfast', 'restaurant_pizza', 'restaurant_ramen',
+  'restaurant_sandwich', 'restaurant_sushi',
+  'street_flowers', 'street_icecream',
   // Legacy
   'tree_sm', 'tree_lg', 'sidewalk', 'park', 'bench', 'fountain', 'bush',
 ]);
@@ -370,6 +394,8 @@ export interface CellContent {
   /** For multi-cell structures, only the top-left cell has the content. Other cells point to it. */
   originCol?: number;
   originRow?: number;
+  /** Horizontal flip — mirrors the sprite for directional assets */
+  flip?: boolean;
 }
 
 export interface DistrictBounds {
@@ -434,15 +460,30 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   road_t_1: [1, 1], road_t_2: [1, 1], road_t_3: [1, 1], road_t_4: [1, 1],
   road_end_1: [1, 1], road_end_2: [1, 1], road_end_3: [1, 1], road_end_4: [1, 1],
   // ── Trottoirs ────────────────────────────────────────────────────────────
-  sidewalk_1: [1, 1], sidewalk_2: [1, 1], sidewalk_3: [1, 1], sidewalk_4: [1, 1],
-  sidewalk_5: [1, 1], sidewalk_6: [1, 1], sidewalk_7: [1, 1], sidewalk_8: [1, 1],
-  sidewalk_9: [1, 1],
+  sidewalk_1:  [1, 1], sidewalk_2:  [1, 1], sidewalk_3:  [1, 1], sidewalk_4:  [1, 1],
+  sidewalk_5:  [1, 1], sidewalk_6:  [1, 1], sidewalk_7:  [1, 1], sidewalk_8:  [1, 1],
+  sidewalk_9:  [1, 1],
+  sidewalk_10: [1, 1], sidewalk_11: [1, 1], sidewalk_12: [1, 1], sidewalk_13: [1, 1],
   // ── Nature ───────────────────────────────────────────────────────────────
   tree_palm: [1, 1], tree_3: [1, 1], tree_14: [1, 1],
   // ── Décorations ──────────────────────────────────────────────────────────
   park_fountain: [2, 2], park_pond: [2, 2],
-  // ── Utilitaires ──────────────────────────────────────────────────────────
+  // ── Utilitaires — Parking ────────────────────────────────────────────────
   carpark_sign: [2, 1], carpark_gate: [2, 2],
+  // ── Utilitaires — Services ────────────────────────────────────────────────
+  bar:        [2, 1], hospital:   [2, 2], post_office: [2, 1],
+  recycling:  [2, 1], gas_station: [2, 1], tele_tower: [1, 1],
+  // ── Utilitaires — Urgences ────────────────────────────────────────────────
+  fire_station: [2, 2], police_station: [2, 2], prison: [2, 2],
+  // ── Utilitaires — Loisirs ─────────────────────────────────────────────────
+  cinema: [2, 2], museum: [2, 2],
+  stadium_athletics: [2, 2], stadium_football_american: [2, 2],
+  stadium_football_soccer: [2, 2], stadium_tennis: [2, 2],
+  // ── Utilitaires — Restauration ────────────────────────────────────────────
+  restaurant_breakfast: [2, 1], restaurant_pizza:    [2, 1],
+  restaurant_ramen:     [2, 1], restaurant_sandwich: [2, 1],
+  restaurant_sushi:     [2, 1],
+  street_flowers: [1, 1], street_icecream: [1, 1],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],

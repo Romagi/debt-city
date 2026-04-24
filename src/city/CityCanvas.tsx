@@ -81,7 +81,7 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   road_end_2:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_3:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   road_end_4:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  // Trottoirs 1×1 (512×512 = même format tile_grass)
+  // Trottoirs 1×1 (512×512 = même format tile_grass) — ✅ calibrés
   sidewalk_1:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   sidewalk_2:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   sidewalk_3:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
@@ -91,6 +91,10 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   sidewalk_7:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   sidewalk_8:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   sidewalk_9:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_10:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_11:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_12:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  sidewalk_13:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   // Nature 1×1 ✅ calibré
   tree_palm:        { baseRatio: 1.970, yOff: -0.32, xOff:  0.00 },  // 152×224
   tree_3:           { baseRatio: 1.970, yOff: -0.32, xOff:  0.00 },  // 154×227
@@ -101,7 +105,21 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   shop_store:       { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
   construction_2x1: { baseRatio: 1.0, yOff: 0.46, xOff: -0.24 },
   // ── Footprint 2×1 ─────────────────────────────────────────────────────────
-  carpark_sign:     { baseRatio: 1.000, yOff: 0.46, xOff: -0.25 },  // 768×1024 ✅ calibré
+  carpark_sign:         { baseRatio: 1.000, yOff: 0.46, xOff: -0.25 },  // 768×1024 ✅ calibré
+  // Utilitaires 2×1 ✅ calibrés
+  bar:                  { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  post_office:          { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  recycling:            { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  gas_station:          { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  restaurant_breakfast: { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  restaurant_pizza:     { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  restaurant_ramen:     { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  restaurant_sandwich:  { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  restaurant_sushi:     { baseRatio: 1.0, yOff: 0.50, xOff: -0.24 },
+  // Utilitaires 1×1 ✅ calibrés
+  tele_tower:           { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  street_flowers:       { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  street_icecream:      { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   // ── Footprint 2×2 — calibrés ─────────────────────────────────────────────
   building_lg:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },
   building_xl:      { baseRatio: 1.0, yOff: 0.43, xOff:  0.00 },  // ✅ calibré
@@ -112,6 +130,17 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   park_fountain:    { baseRatio: 1.000, yOff: 0.46, xOff:  0.00 },  // 1024×768  ✅ calibré
   park_pond:        { baseRatio: 1.000, yOff: 0.46, xOff:  0.00 },  // 1024×1024 ✅ calibré
   carpark_gate:     { baseRatio: 1.000, yOff: 0.46, xOff:  0.00 },  // 1024×1024 ✅ calibré
+  // Utilitaires 2×2 ✅ calibrés
+  hospital:                  { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  fire_station:              { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  police_station:            { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  prison:                    { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  cinema:                    { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  museum:                    { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  stadium_athletics:         { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  stadium_football_american: { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  stadium_football_soccer:   { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
+  stadium_tennis:            { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   // ── Legacy aliases (grids existantes) — redirects vers nouveaux sprites ───
   tree_sm:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   tree_lg:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
@@ -187,8 +216,8 @@ const SPRITE_PATHS = {
   road_end_2:       '/sprites/roads/road-end-2.png',  // road_end_s (fermé N)
   road_end_3:       '/sprites/roads/road-end-3.png',  // road_end_e (fermé W)
   road_end_4:       '/sprites/roads/road-end-4.png',  // road_end_n (fermé S)
-  // ── Trottoirs (9 variantes, plaçables) ───────────────────────────────────
-  sidewalk_1:       '/sprites/sidewalks/Sidewalk_Tile1.png',        // 512×512  1×1
+  // ── Trottoirs (13 variantes, plaçables) ──────────────────────────────────
+  sidewalk_1:       '/sprites/sidewalks/Sidewalk_Tile1.png',
   sidewalk_2:       '/sprites/sidewalks/Sidewalk_Tile2.png',
   sidewalk_3:       '/sprites/sidewalks/Sidewalk_Tile3.png',
   sidewalk_4:       '/sprites/sidewalks/Sidewalk_Tile4.png',
@@ -197,6 +226,10 @@ const SPRITE_PATHS = {
   sidewalk_7:       '/sprites/sidewalks/Sidewalk_Tile7.png',
   sidewalk_8:       '/sprites/sidewalks/Sidewalk_Tile8.png',
   sidewalk_9:       '/sprites/sidewalks/Sidewalk_Tile9.png',
+  sidewalk_10:      '/sprites/sidewalks/Sidewalk_Tile10.png',
+  sidewalk_11:      '/sprites/sidewalks/Sidewalk_Tile11.png',
+  sidewalk_12:      '/sprites/sidewalks/Sidewalk_Tile12.png',
+  sidewalk_13:      '/sprites/sidewalks/Sidewalk_Tile13.png',
   // ── Nature ───────────────────────────────────────────────────────────────
   tree_palm:        '/sprites/nature/Palm3.png',                    // 152×224  1×1 à calibrer
   tree_3:           '/sprites/nature/Tree3.png',                    // 154×227  1×1 à calibrer
@@ -204,9 +237,35 @@ const SPRITE_PATHS = {
   // ── Décorations ──────────────────────────────────────────────────────────
   park_fountain:    '/sprites/deco/Park_Fountain.png',              // 1024×768  2×2 à calibrer
   park_pond:        '/sprites/deco/Park_Pond.png',                  // 1024×1024 2×2 à calibrer
-  // ── Utilitaires (plaçables) ───────────────────────────────────────────────
-  carpark_sign:     '/sprites/utilities/Carpark_1x2_Sign.png',     // 768×1024  1×2 à calibrer
-  carpark_gate:     '/sprites/utilities/Carpark_Fancy_GateUp.png', // 1024×1024 2×2 à calibrer
+  // ── Utilitaires — Parking ────────────────────────────────────────────────
+  carpark_sign:              '/sprites/utilities/Carpark_1x2_Sign.png',
+  carpark_gate:              '/sprites/utilities/Carpark_Fancy_GateUp.png',
+  // ── Utilitaires — Services ────────────────────────────────────────────────
+  bar:                       '/sprites/utilities/Bar.png',
+  hospital:                  '/sprites/utilities/Doctor_Hospital.png',
+  post_office:               '/sprites/utilities/PostOffice.png',
+  recycling:                 '/sprites/utilities/Recycling.png',
+  gas_station:               '/sprites/utilities/GasStation.png',
+  tele_tower:                '/sprites/utilities/TeleTower.png',
+  // ── Utilitaires — Urgences ────────────────────────────────────────────────
+  fire_station:              '/sprites/utilities/Emergency_FireStation.png',
+  police_station:            '/sprites/utilities/Emergency_PoliceStation.png',
+  prison:                    '/sprites/utilities/Emergency_Prison.png',
+  // ── Utilitaires — Loisirs ─────────────────────────────────────────────────
+  cinema:                    '/sprites/utilities/Leasure_Cinema.png',
+  museum:                    '/sprites/utilities/Leasure_Museum.png',
+  stadium_athletics:         '/sprites/utilities/Stadium_Athletics.png',
+  stadium_football_american: '/sprites/utilities/Stadium_FootballAmerican.png',
+  stadium_football_soccer:   '/sprites/utilities/Stadium_FootballSocker.png',
+  stadium_tennis:            '/sprites/utilities/Stadium_Tennis.png',
+  // ── Utilitaires — Restauration ────────────────────────────────────────────
+  restaurant_breakfast:      '/sprites/utilities/Restaurant_Breakfast.png',
+  restaurant_pizza:          '/sprites/utilities/Restaurant_Pizza.png',
+  restaurant_ramen:          '/sprites/utilities/Restaurant_Ramen.png',
+  restaurant_sandwich:       '/sprites/utilities/Restaurant_Sandwich.png',
+  restaurant_sushi:          '/sprites/utilities/Restaurant_Sushi.png',
+  street_flowers:            '/sprites/utilities/StreetStand_Flowers.png',
+  street_icecream:           '/sprites/utilities/StreetStand_Icecream.png',
   // ── Legacy aliases (compatibilité grids existantes) ───────────────────────
   tree_sm:          '/sprites/nature/Tree3.png',
   tree_lg:          '/sprites/nature/Tree14.png',
@@ -264,6 +323,7 @@ interface DragState {
 export interface PlacementMode {
   deco: CellType;
   eraser: boolean;
+  flip?: boolean;
 }
 
 interface Props {
@@ -287,9 +347,35 @@ const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
   // ── Décorations ──────────────────────────────────────────────────────────
   park_fountain: 'park_fountain',
   park_pond:     'park_pond',
-  // ── Utilitaires ───────────────────────────────────────────────────────────
+  // ── Utilitaires — Parking ─────────────────────────────────────────────────
   carpark_sign:  'carpark_sign',
   carpark_gate:  'carpark_gate',
+  // ── Utilitaires — Services ────────────────────────────────────────────────
+  bar:           'bar',
+  hospital:      'hospital',
+  post_office:   'post_office',
+  recycling:     'recycling',
+  gas_station:   'gas_station',
+  tele_tower:    'tele_tower',
+  // ── Utilitaires — Urgences ────────────────────────────────────────────────
+  fire_station:   'fire_station',
+  police_station: 'police_station',
+  prison:         'prison',
+  // ── Utilitaires — Loisirs ─────────────────────────────────────────────────
+  cinema:                    'cinema',
+  museum:                    'museum',
+  stadium_athletics:         'stadium_athletics',
+  stadium_football_american: 'stadium_football_american',
+  stadium_football_soccer:   'stadium_football_soccer',
+  stadium_tennis:            'stadium_tennis',
+  // ── Utilitaires — Restauration ────────────────────────────────────────────
+  restaurant_breakfast: 'restaurant_breakfast',
+  restaurant_pizza:     'restaurant_pizza',
+  restaurant_ramen:     'restaurant_ramen',
+  restaurant_sandwich:  'restaurant_sandwich',
+  restaurant_sushi:     'restaurant_sushi',
+  street_flowers:       'street_flowers',
+  street_icecream:      'street_icecream',
   // ── Legacy aliases ────────────────────────────────────────────────────────
   tree_sm: 'tree_sm',
   tree_lg: 'tree_lg',
@@ -499,10 +585,12 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     // ── Layer 2: Overlay — trottoirs (on top of ground, below objects) ──
     // Covers all sidewalk variants: legacy 'sidewalk' + 'sidewalk_1'…'sidewalk_9'
     const SIDEWALK_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
-      sidewalk:   'tile_sidewalk_flat',
-      sidewalk_1: 'sidewalk_1', sidewalk_2: 'sidewalk_2', sidewalk_3: 'sidewalk_3',
-      sidewalk_4: 'sidewalk_4', sidewalk_5: 'sidewalk_5', sidewalk_6: 'sidewalk_6',
-      sidewalk_7: 'sidewalk_7', sidewalk_8: 'sidewalk_8', sidewalk_9: 'sidewalk_9',
+      sidewalk:    'tile_sidewalk_flat',
+      sidewalk_1:  'sidewalk_1',  sidewalk_2:  'sidewalk_2',  sidewalk_3:  'sidewalk_3',
+      sidewalk_4:  'sidewalk_4',  sidewalk_5:  'sidewalk_5',  sidewalk_6:  'sidewalk_6',
+      sidewalk_7:  'sidewalk_7',  sidewalk_8:  'sidewalk_8',  sidewalk_9:  'sidewalk_9',
+      sidewalk_10: 'sidewalk_10', sidewalk_11: 'sidewalk_11',
+      sidewalk_12: 'sidewalk_12', sidewalk_13: 'sidewalk_13',
     };
     const sidewalkCells: { col: number; row: number; type: CellType }[] = [];
     for (let r = 0; r < grid.size; r++) {
@@ -525,7 +613,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
     // ── Layer 3: Objects — decoration sprites (trees, park, bush…) ──
     // Roads and sidewalks are excluded — they live in layers 1 and 2.
-    const decos: { col: number; row: number; type: CellType }[] = [];
+    const decos: { col: number; row: number; type: CellType; flip: boolean }[] = [];
     for (let r = 0; r < grid.size; r++) {
       for (let c = 0; c < grid.size; c++) {
         const cell = grid.cells[r]?.[c];
@@ -537,7 +625,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           cell.originCol == null &&
           cell.originRow == null
         ) {
-          decos.push({ col: c, row: r, type: cell.type });
+          decos.push({ col: c, row: r, type: cell.type, flip: cell.flip ?? false });
         }
       }
     }
@@ -552,7 +640,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       const { x, y } = gridToScreen(d.col + fw - 0.5, d.row + fh - 0.5);
       ctx.save();
       ctx.translate(x, y);
-      drawSpriteOnGrid(ctx, spriteKey);
+      drawSpriteOnGrid(ctx, spriteKey, d.flip);
       ctx.restore();
     }
 
@@ -576,10 +664,11 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       if (ghostSpriteKey) {
         // Draw sprite at 60% alpha — same anchor formula as calibrate.html
         const { x, y } = gridToScreen(gc + pw - 0.5, gr + ph - 0.5);
+        const ghostFlip = placementMode.flip ?? false;
         ctx.save();
         ctx.globalAlpha = 0.6;
         ctx.translate(x, y);
-        drawSpriteOnGrid(ctx, ghostSpriteKey);
+        drawSpriteOnGrid(ctx, ghostSpriteKey, ghostFlip);
         ctx.restore();
       }
 
@@ -883,8 +972,11 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
    *    → for new lib sprites (baseRatio=1.0) gives scale=0.125 regardless of size.
    *
    *  yOff: sprite_bottom = anchor_y + ISO_TILE_H × yOff.
-   *    yOff=0.5 → cube bottom sits ISO_TILE_H/2 = 19px below south tip (matches tile_grass). */
-  function drawSpriteOnGrid(ctx: CanvasRenderingContext2D, spriteKey: SpriteKey) {
+   *    yOff=0.5 → cube bottom sits ISO_TILE_H/2 = 19px below south tip (matches tile_grass).
+   *
+   *  flip: horizontal mirror. Uses ctx.scale(-1,1) + negated xOff to keep the
+   *    sprite visually centred on the same anchor point. */
+  function drawSpriteOnGrid(ctx: CanvasRenderingContext2D, spriteKey: SpriteKey, flip = false) {
     const sprite = getSprite(spriteKey);
     if (!sprite) return false;
     const [footCols, footRows] = STRUCTURE_SIZES[spriteKey] ?? [2, 2];
@@ -896,7 +988,14 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     const scale = footprintW / baseW;
     const sw = sprite.width * scale;
     const sh = sprite.height * scale;
-    ctx.drawImage(sprite, -sw / 2 + ISO_TILE_W * anchor.xOff, -sh + ISO_TILE_H * anchor.yOff, sw, sh);
+    const dy = -sh + ISO_TILE_H * anchor.yOff;
+    if (flip) {
+      // Mirror horizontally: ctx.scale(-1,1) + negate xOff so the anchor stays centred
+      ctx.scale(-1, 1);
+      ctx.drawImage(sprite, -sw / 2 - ISO_TILE_W * anchor.xOff, dy, sw, sh);
+    } else {
+      ctx.drawImage(sprite, -sw / 2 + ISO_TILE_W * anchor.xOff, dy, sw, sh);
+    }
     return true;
   }
 

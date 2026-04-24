@@ -32,7 +32,7 @@ type Action =
   | { type: 'DELETE_DOCUMENT'; payload: { projectId: string; documentId: string } }
   | { type: 'MOVE_STRUCTURE'; payload: { entityId: string; structureType: CellType; toCol: number; toRow: number; width: number; height: number } }
   | { type: 'SYNC_GRID'; payload: { grid: import('../types/portfolio').GridState } }
-  | { type: 'PLACE_DECORATION'; payload: { decorationType: CellType; col: number; row: number; projectId: string } }
+  | { type: 'PLACE_DECORATION'; payload: { decorationType: CellType; col: number; row: number; projectId: string; flip?: boolean } }
   | { type: 'REMOVE_DECORATION'; payload: { col: number; row: number } };
 
 export type PortfolioAction = Action;
@@ -493,7 +493,7 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
 
     // ── Decorations ──
     case 'PLACE_DECORATION': {
-      const { decorationType, col, row, projectId } = action.payload;
+      const { decorationType, col, row, projectId, flip } = action.payload;
       const [w, h] = STRUCTURE_SIZES[decorationType] ?? [1, 1];
       // If inside a district, must fit within it
       const district = getDistrictAt(state.grid, col, row);
@@ -504,6 +504,7 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
         type: decorationType,
         entityId,
         projectId: projectId || undefined,
+        flip: flip || undefined,
       });
       return { ...state, grid: newGrid };
     }
