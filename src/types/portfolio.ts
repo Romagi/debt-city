@@ -492,8 +492,10 @@ export const STRUCTURE_SIZES: Record<string, [number, number]> = {
   restaurant_sushi:     [2, 1],
   street_flowers: [1, 1], street_icecream: [1, 1],
   // Clôtures (1×1 — PicketFence1/2, 262×255)
-  fence_1: [1, 1],
-  fence_2: [1, 1],
+  fence_1:        [1, 1],
+  fence_2:        [1, 1],
+  picket_fence_1: [1, 1],  // SpriteKey alias — requis pour drawSpriteOnGrid
+  picket_fence_2: [1, 1],
   // Decorations
   tree_sm: [1, 1],
   tree_lg: [1, 1],

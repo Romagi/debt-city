@@ -481,31 +481,32 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
     // ── Grid ──
     case 'SYNC_GRID': {
       const incoming = action.payload.grid;
-      // Sync when new districts or structures appear (new deals, initial render)
-      if (incoming.districts.length > state.grid.districts.length) {
-        const existingIds = new Set(state.grid.districts.map(d => d.projectId));
-        const newDistricts = incoming.districts.filter(d => !existingIds.has(d.projectId));
+      const existingIds = new Set(state.grid.districts.map(d => d.projectId));
+      const newDistricts = incoming.districts.filter(d => !existingIds.has(d.projectId));
+      const hasNewDistricts = newDistricts.length > 0;
 
-        // Merge: keep existing cell modifications (moved structures, decorations) but add new districts & their structures
+      let workingGrid = state.grid;
+
+      if (hasNewDistricts) {
+        // Merge: keep existing cell modifications (moves, decos) but fill new structures
         const newCells = state.grid.cells.map((row, r) =>
           row.map((cell, c) => {
-            // Keep existing user modifications (moves, decorations)
             if (cell !== null) return cell;
-            // Fill in new structures from buildCityState
             return incoming.cells[r]?.[c] ?? null;
           })
         );
-
-        let mergedGrid = { ...state.grid, cells: newCells, districts: incoming.districts };
-
-        // Auto-place fences on the perimeter of each new district
-        for (const district of newDistricts) {
-          mergedGrid = placeFencesForDistrict(mergedGrid, district);
-        }
-
-        return { ...state, grid: mergedGrid };
+        workingGrid = { ...state.grid, cells: newCells, districts: incoming.districts };
       }
-      return state;
+
+      // Place fences on the perimeter of every district that doesn't have them yet.
+      // The null-check inside placeFencesForDistrict ensures no overwrites.
+      const gridBefore = workingGrid;
+      for (const district of workingGrid.districts) {
+        workingGrid = placeFencesForDistrict(workingGrid, district);
+      }
+
+      const changed = hasNewDistricts || workingGrid !== gridBefore;
+      return changed ? { ...state, grid: workingGrid } : state;
     }
     case 'MOVE_STRUCTURE': {
       const { entityId, structureType, toCol, toRow, width, height } = action.payload;

@@ -80,10 +80,15 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
   const cityState = useMemo(() => buildCityState(portfolio), [portfolio]);
 
   // Sync grid when buildCityState produces new districts (initial render + new deals)
+  // hasSyncedRef ensures we fire at least once on mount so existing sessions get fences retroactively
+  const hasSyncedRef = useRef(false);
   const cityDistrictCount = cityState.grid.districts.length;
   const portfolioDistrictCount = portfolio.grid.districts.length;
   useEffect(() => {
-    if (cityDistrictCount > portfolioDistrictCount) {
+    const isFirstSync = !hasSyncedRef.current;
+    const hasNewDistricts = cityDistrictCount > portfolioDistrictCount;
+    if (isFirstSync || hasNewDistricts) {
+      hasSyncedRef.current = true;
       dispatch({ type: 'SYNC_GRID', payload: { grid: cityState.grid } });
     }
   }, [cityDistrictCount, portfolioDistrictCount, cityState.grid]);
