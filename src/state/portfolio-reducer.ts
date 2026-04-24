@@ -93,9 +93,11 @@ function getOverlay(grid: GridState): (FenceOverlayCell | null)[][] {
 }
 
 /** Write fences onto the fenceOverlay for a district's perimeter.
- *  nwse (NW-SE) → left and right columns (fence runs parallel to those edges).
- *  nesw (NE-SW) → top and bottom rows (fence runs parallel to those edges).
- *  Corner cells get both flags → both fence sprites rendered. */
+ *  North row   → fence2_n (PicketFence2 on NE edge = top-right in iso).
+ *  South row   → fence2_s (PicketFence2 on SW edge = bottom-left).
+ *  West col    → fence1_w (PicketFence1 on NW edge = top-left).
+ *  East col    → fence1_e (PicketFence1 on SE edge = bottom-right).
+ *  Corner cells get two flags → two fence sprites rendered. */
 function placeFencesForDistrict(grid: GridState, district: DistrictBounds): GridState {
   const { col: dc, row: dr, size } = district;
   const overlay = getOverlay(grid).map(r => [...r]) as (FenceOverlayCell | null)[][];
@@ -105,17 +107,23 @@ function placeFencesForDistrict(grid: GridState, district: DistrictBounds): Grid
     overlay[r][c] = { ...overlay[r][c], ...patch };
   };
 
-  // Top and bottom rows → nesw (NE-SW orientation)
+  // North row → fence2_n (NE/top-right edge)
   for (let c = dc; c < dc + size; c++) {
-    set(c, dr,           { nesw: true });
-    set(c, dr + size - 1, { nesw: true });
+    set(c, dr, { fence2_n: true });
   }
-  // Left and right cols → nwse (NW-SE orientation)
+  // South row → fence2_s (SW/bottom-left edge)
+  for (let c = dc; c < dc + size; c++) {
+    set(c, dr + size - 1, { fence2_s: true });
+  }
+  // West col → fence1_w (NW/top-left edge)
   for (let r = dr; r < dr + size; r++) {
-    set(dc,           r, { nwse: true });
-    set(dc + size - 1, r, { nwse: true });
+    set(dc, r, { fence1_w: true });
   }
-  // Corners already have both flags set from the two loops above
+  // East col → fence1_e (SE/bottom-right edge)
+  for (let r = dr; r < dr + size; r++) {
+    set(dc + size - 1, r, { fence1_e: true });
+  }
+  // Corners automatically have two flags from the loops above
 
   return { ...grid, fenceOverlay: overlay };
 }
@@ -543,7 +551,7 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       // Fence types go to the overlay instead of the main grid
       if (decorationType === 'fence_1' || decorationType === 'fence_2') {
         const overlay = getOverlay(state.grid).map(r => [...r]) as (FenceOverlayCell | null)[][];
-        const patch: FenceOverlayCell = decorationType === 'fence_1' ? { nwse: true } : { nesw: true };
+        const patch: FenceOverlayCell = decorationType === 'fence_1' ? { fence1_w: true } : { fence2_n: true };
         overlay[row][col] = { ...overlay[row][col], ...patch };
         return { ...state, grid: { ...state.grid, fenceOverlay: overlay } };
       }
@@ -569,7 +577,7 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
 
       // If the cell has fence overlay entries, clear them first / instead
       const fenceCell = state.grid.fenceOverlay?.[row]?.[col];
-      if (fenceCell && (fenceCell.nwse || fenceCell.nesw)) {
+      if (fenceCell && (fenceCell.fence1_w || fenceCell.fence1_e || fenceCell.fence2_n || fenceCell.fence2_s)) {
         const overlay = state.grid.fenceOverlay!.map(r => [...r]) as (FenceOverlayCell | null)[][];
         overlay[row][col] = null;
         return { ...state, grid: { ...state.grid, fenceOverlay: overlay } };

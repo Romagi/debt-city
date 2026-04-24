@@ -141,9 +141,9 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   stadium_football_american: { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   stadium_football_soccer:   { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   stadium_tennis:            { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  // ── Clôtures 1×1 (262×255) ✅ calibrés ───────────────────────────────────
-  picket_fence_1:   { baseRatio: 1.760, yOff: 0.00, xOff:  0.24 },
-  picket_fence_2:   { baseRatio: 1.760, yOff: 0.00, xOff: -0.26 },
+  // ── Clôtures 1×1 (262×255) — xOff=0 car positionnement via edge offset ──
+  picket_fence_1:   { baseRatio: 1.760, yOff: 0.00, xOff:  0.00 },
+  picket_fence_2:   { baseRatio: 1.760, yOff: 0.00, xOff:  0.00 },
   // ── Legacy aliases (grids existantes) — redirects vers nouveaux sprites ───
   tree_sm:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   tree_lg:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
@@ -655,19 +655,40 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       ctx.restore();
     }
 
-    // ── Layer 4: Fence overlay — drawn above objects, supports multi per tile ──
+    // ── Layer 4: Fence overlay — each variant placed on its own tile edge ──
+    // Edge midpoints relative to tile center (south-tip of a 1×1 diamond):
+    //   fence1_w → NW edge (top-left in iso)  : (-TW/4, -TH/4)
+    //   fence1_e → SE edge (bottom-right)      : (+TW/4, +TH/4)
+    //   fence2_n → NE edge (top-right)         : (+TW/4, -TH/4)
+    //   fence2_s → SW edge (bottom-left)       : (-TW/4, +TH/4)
     if (grid.fenceOverlay) {
+      const tw4 = ISO_TILE_W / 4;   // 16
+      const th4 = ISO_TILE_H / 4;   // 9.5
       for (let r = 0; r < grid.size; r++) {
         for (let c = 0; c < grid.size; c++) {
           const fence = grid.fenceOverlay[r]?.[c];
-          if (!fence || (!fence.nwse && !fence.nesw)) continue;
-          // South-tip anchor for 1×1: gridToScreen(c+0.5, r+0.5)
-          const { x, y } = gridToScreen(c + 0.5, r + 0.5);
-          ctx.save();
-          ctx.translate(x, y);
-          if (fence.nwse) drawSpriteOnGrid(ctx, 'picket_fence_1');
-          if (fence.nesw) drawSpriteOnGrid(ctx, 'picket_fence_2');
-          ctx.restore();
+          if (!fence || (!fence.fence1_w && !fence.fence1_e && !fence.fence2_n && !fence.fence2_s)) continue;
+          const { x: cx, y: cy } = gridToScreen(c + 0.5, r + 0.5);
+          if (fence.fence1_w) {
+            ctx.save(); ctx.translate(cx - tw4, cy - th4);
+            drawSpriteOnGrid(ctx, 'picket_fence_1');
+            ctx.restore();
+          }
+          if (fence.fence1_e) {
+            ctx.save(); ctx.translate(cx + tw4, cy + th4);
+            drawSpriteOnGrid(ctx, 'picket_fence_1');
+            ctx.restore();
+          }
+          if (fence.fence2_n) {
+            ctx.save(); ctx.translate(cx + tw4, cy - th4);
+            drawSpriteOnGrid(ctx, 'picket_fence_2');
+            ctx.restore();
+          }
+          if (fence.fence2_s) {
+            ctx.save(); ctx.translate(cx - tw4, cy + th4);
+            drawSpriteOnGrid(ctx, 'picket_fence_2');
+            ctx.restore();
+          }
         }
       }
     }

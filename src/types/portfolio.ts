@@ -413,12 +413,16 @@ export interface DistrictBounds {
 }
 
 /** Per-cell fence overlay — independent of the main cells grid.
- *  nwse = orientation NW-SE (left/right columns of a district).
- *  nesw = orientation NE-SW (top/bottom rows of a district).
- *  Both can be true on the same cell (corners). */
+ *  fence1_w = PicketFence1 on West/NW edge  (left boundary of district in iso).
+ *  fence1_e = PicketFence1 on East/SE edge  (right boundary).
+ *  fence2_n = PicketFence2 on North/NE edge (top boundary).
+ *  fence2_s = PicketFence2 on South/SW edge (bottom boundary).
+ *  Multiple flags can be true on the same cell (corners get two fences). */
 export interface FenceOverlayCell {
-  nwse?: boolean;
-  nesw?: boolean;
+  fence1_w?: boolean;
+  fence1_e?: boolean;
+  fence2_n?: boolean;
+  fence2_s?: boolean;
 }
 
 export interface GridState {
