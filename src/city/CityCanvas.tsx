@@ -634,7 +634,9 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     for (const d of decos) {
       const spriteKey = DECO_SPRITE_MAP[d.type];
       if (!spriteKey) continue;
-      const [fw, fh] = STRUCTURE_SIZES[d.type] ?? [1, 1];
+      const rawSize = STRUCTURE_SIZES[d.type] ?? [1, 1] as [number, number];
+      // Flip permutes the footprint: 2×1 becomes 1×2, anchor recalculated accordingly
+      const [fw, fh] = (d.flip && rawSize[0] !== rawSize[1]) ? [rawSize[1], rawSize[0]] : rawSize;
       // Anchor = south tip of footprint, same formula as calibrate.html:
       // g2s(col + footCols - 0.5, row + footRows - 0.5)
       const { x, y } = gridToScreen(d.col + fw - 0.5, d.row + fh - 0.5);
@@ -646,7 +648,12 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
     // ── Ghost preview for placement mode ─────────────────────────────
     if (placementMode && !placementMode.eraser && hCell) {
-      const [pw, ph] = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1];
+      const ghostFlip = placementMode.flip ?? false;
+      const rawGhostSize = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1] as [number, number];
+      // Permute footprint when flipped (2×1 → 1×2)
+      const [pw, ph] = (ghostFlip && rawGhostSize[0] !== rawGhostSize[1])
+        ? [rawGhostSize[1], rawGhostSize[0]]
+        : rawGhostSize;
       const gc = hCell.col - Math.floor(pw / 2);
       const gr = hCell.row - Math.floor(ph / 2);
       const district = getDistrictAt(grid, hCell.col, hCell.row);
@@ -664,7 +671,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       if (ghostSpriteKey) {
         // Draw sprite at 60% alpha — same anchor formula as calibrate.html
         const { x, y } = gridToScreen(gc + pw - 0.5, gr + ph - 0.5);
-        const ghostFlip = placementMode.flip ?? false;
         ctx.save();
         ctx.globalAlpha = 0.6;
         ctx.translate(x, y);
@@ -699,7 +705,10 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         const or_ = cell.originRow ?? hCell.row;
         const origin = grid.cells[or_]?.[oc];
         if (origin) {
-          const [fw, fh] = STRUCTURE_SIZES[origin.type] ?? [1, 1];
+          const rawOriginSize = STRUCTURE_SIZES[origin.type] ?? [1, 1] as [number, number];
+          const [fw, fh] = (origin.flip && rawOriginSize[0] !== rawOriginSize[1])
+            ? [rawOriginSize[1], rawOriginSize[0]]
+            : rawOriginSize;
           for (let dc = oc; dc < oc + fw; dc++) {
             for (let dr = or_; dr < or_ + fh; dr++) {
               const { x, y } = gridToScreen(dc, dr);

@@ -494,7 +494,9 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
     // ── Decorations ──
     case 'PLACE_DECORATION': {
       const { decorationType, col, row, projectId, flip } = action.payload;
-      const [w, h] = STRUCTURE_SIZES[decorationType] ?? [1, 1];
+      const rawSize = STRUCTURE_SIZES[decorationType] ?? [1, 1];
+      // Permute footprint when flipped (e.g. 2×1 → 1×2)
+      const [w, h] = (flip && rawSize[0] !== rawSize[1]) ? [rawSize[1], rawSize[0]] : rawSize;
       // If inside a district, must fit within it
       const district = getDistrictAt(state.grid, col, row);
       if (district && !fitsInDistrict(district, col, row, w, h)) return state;
