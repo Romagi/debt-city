@@ -2,9 +2,9 @@ import { useState } from 'react';
 import type { CellType } from '../types/portfolio';
 import type { PlacementMode } from '../city/CityCanvas';
 
-// ─── Catalog ───────────────────────────────────────────────────────────────
+// ─── Catalogue organisé par onglet ────────────────────────────────────────
 
-type CatalogTab = 'nature' | 'roads';
+type CatalogTab = 'nature' | 'trottoirs' | 'deco' | 'utilities' | 'routes';
 
 interface CatalogItem {
   type: CellType;
@@ -15,14 +15,36 @@ interface CatalogItem {
 }
 
 const CATALOG: CatalogItem[] = [
-  // Nature tab
-  { type: 'tree_sm',  label: 'Petit arbre',  sprite: '/sprites/tree-sm.png',         size: [1, 1], tab: 'nature' },
-  { type: 'tree_lg',  label: 'Grand arbre',  sprite: '/sprites/tree-lg.png',         size: [1, 1], tab: 'nature' },
-  { type: 'park',     label: 'Parc',         sprite: '/sprites/park.png',            size: [2, 2], tab: 'nature' },
-  { type: 'bush',     label: 'Buisson',      sprite: '/sprites/bush.png',            size: [1, 1], tab: 'nature' },
-  // Roads tab
-  { type: 'road',     label: 'Route',        sprite: '/sprites/road-straight-1.png', size: [1, 1], tab: 'roads'  },
-  { type: 'sidewalk', label: 'Trottoir',     sprite: '/sprites/tile-concrete.png',   size: [1, 1], tab: 'roads'  },
+  // Nature
+  { type: 'tree_palm', label: 'Palmier',   sprite: '/sprites/nature/Palm3.png',   size: [1, 1], tab: 'nature' },
+  { type: 'tree_3',    label: 'Arbre 3',   sprite: '/sprites/nature/Tree3.png',   size: [1, 1], tab: 'nature' },
+  { type: 'tree_14',   label: 'Arbre 14',  sprite: '/sprites/nature/Tree14.png',  size: [1, 1], tab: 'nature' },
+  // Trottoirs
+  { type: 'sidewalk_1', label: 'Trottoir 1', sprite: '/sprites/sidewalks/Sidewalk_Tile1.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_2', label: 'Trottoir 2', sprite: '/sprites/sidewalks/Sidewalk_Tile2.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_3', label: 'Trottoir 3', sprite: '/sprites/sidewalks/Sidewalk_Tile3.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_4', label: 'Trottoir 4', sprite: '/sprites/sidewalks/Sidewalk_Tile4.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_5', label: 'Trottoir 5', sprite: '/sprites/sidewalks/Sidewalk_Tile5.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_6', label: 'Trottoir 6', sprite: '/sprites/sidewalks/Sidewalk_Tile6.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_7', label: 'Trottoir 7', sprite: '/sprites/sidewalks/Sidewalk_Tile7.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_8', label: 'Trottoir 8', sprite: '/sprites/sidewalks/Sidewalk_Tile8.png', size: [1, 1], tab: 'trottoirs' },
+  { type: 'sidewalk_9', label: 'Trottoir 9', sprite: '/sprites/sidewalks/Sidewalk_Tile9.png', size: [1, 1], tab: 'trottoirs' },
+  // Décorations
+  { type: 'park_fountain', label: 'Fontaine', sprite: '/sprites/deco/Park_Fountain.png', size: [2, 2], tab: 'deco' },
+  { type: 'park_pond',     label: 'Bassin',   sprite: '/sprites/deco/Park_Pond.png',     size: [2, 2], tab: 'deco' },
+  // Utilitaires
+  { type: 'carpark_sign', label: 'Panneau P',  sprite: '/sprites/utilities/Carpark_1x2_Sign.png',     size: [2, 1], tab: 'utilities' },
+  { type: 'carpark_gate', label: 'Barrière P', sprite: '/sprites/utilities/Carpark_Fancy_GateUp.png', size: [2, 2], tab: 'utilities' },
+  // Routes
+  { type: 'road', label: 'Route', sprite: '/sprites/roads/road-straight-1.png', size: [1, 1], tab: 'routes' },
+];
+
+const TABS: { id: CatalogTab; icon: string; label: string }[] = [
+  { id: 'nature',    icon: '🌳', label: 'Nature'      },
+  { id: 'trottoirs', icon: '⬜', label: 'Trottoirs'   },
+  { id: 'deco',      icon: '⛲', label: 'Déco'        },
+  { id: 'utilities', icon: '🅿', label: 'Utilitaires' },
+  { id: 'routes',    icon: '🛣', label: 'Routes'      },
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -40,17 +62,15 @@ interface Props {
 
 export default function Toolbar({ placementMode, onSelectItem, onErase, onCancel }: Props) {
   const [activeTab, setActiveTab] = useState<CatalogTab>('nature');
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   // Derive toolbar state
-  let toolbarState: ToolbarState = 'idle';
-  if (placementMode) toolbarState = 'placing';
-
-  const [catalogOpen, setCatalogOpen] = useState(false);
+  const toolbarState: ToolbarState = placementMode ? 'placing' : 'idle';
   const isOpen = catalogOpen && toolbarState !== 'placing';
 
   function handleTabClick(tab: CatalogTab) {
     setActiveTab(tab);
-    if (!isOpen) setCatalogOpen(true);
+    if (!catalogOpen) setCatalogOpen(true);
   }
 
   function handleItemClick(item: CatalogItem) {
@@ -72,23 +92,24 @@ export default function Toolbar({ placementMode, onSelectItem, onErase, onCancel
 
   return (
     <div style={styles.wrapper}>
-      {/* ── Catalog drawer (slides up) ── */}
+
+      {/* ── Catalog drawer (slides up above toolbar) ── */}
       {isOpen && (
         <div style={styles.drawer}>
+          {/* Tab bar */}
           <div style={styles.tabs}>
-            <button
-              style={{ ...styles.tab, ...(activeTab === 'nature' ? styles.tabActive : {}) }}
-              onClick={() => setActiveTab('nature')}
-            >
-              🌳 Nature
-            </button>
-            <button
-              style={{ ...styles.tab, ...(activeTab === 'roads' ? styles.tabActive : {}) }}
-              onClick={() => setActiveTab('roads')}
-            >
-              🛣 Routes
-            </button>
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                style={{ ...styles.tab, ...(activeTab === t.id ? styles.tabActive : {}) }}
+                onClick={() => setActiveTab(t.id)}
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
           </div>
+
+          {/* Item grid */}
           <div style={styles.itemGrid}>
             {filteredItems.map(item => (
               <button
@@ -99,9 +120,10 @@ export default function Toolbar({ placementMode, onSelectItem, onErase, onCancel
               >
                 <img src={item.sprite} alt={item.label} style={styles.itemSprite} />
                 <span style={styles.itemLabel}>{item.label}</span>
-                {item.tab === 'roads' && item.type === 'road' && (
+                {item.type === 'road' && (
                   <span style={styles.badge}>auto-tiling</span>
                 )}
+                <span style={styles.sizeTag}>{item.size[0]}×{item.size[1]}</span>
               </button>
             ))}
           </div>
@@ -124,20 +146,16 @@ export default function Toolbar({ placementMode, onSelectItem, onErase, onCancel
         ) : (
           /* IDLE / CATALOG state */
           <>
-            <button
-              style={{ ...styles.btn, ...(isOpen && activeTab === 'nature' ? styles.btnActive : {}) }}
-              onClick={() => handleTabClick('nature')}
-              title="Nature — arbres, parcs, buissons"
-            >
-              🌳 <span style={styles.btnLabel}>Nature</span>
-            </button>
-            <button
-              style={{ ...styles.btn, ...(isOpen && activeTab === 'roads' ? styles.btnActive : {}) }}
-              onClick={() => handleTabClick('roads')}
-              title="Routes — auto-tiling et trottoirs"
-            >
-              🛣 <span style={styles.btnLabel}>Routes</span>
-            </button>
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                style={{ ...styles.btn, ...(isOpen && activeTab === t.id ? styles.btnActive : {}) }}
+                onClick={() => handleTabClick(t.id)}
+                title={t.label}
+              >
+                {t.icon} <span style={styles.btnLabel}>{t.label}</span>
+              </button>
+            ))}
             <div style={styles.divider} />
             <button
               style={{ ...styles.btn, ...styles.btnErase }}
@@ -171,10 +189,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
     zIndex: 20,
-    pointerEvents: 'none', // children override this
+    pointerEvents: 'none',
   },
   drawer: {
-    background: 'rgba(12, 16, 28, 0.92)',
+    background: 'rgba(12, 16, 28, 0.93)',
     backdropFilter: 'blur(16px)',
     border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 14,
@@ -183,28 +201,30 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: 10,
     pointerEvents: 'all',
-    minWidth: 280,
+    minWidth: 340,
+    maxWidth: 520,
     boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-    animation: 'slideUp 0.18s ease-out',
   },
   tabs: {
     display: 'flex',
-    gap: 6,
+    gap: 5,
+    flexWrap: 'wrap',
   },
   tab: {
-    flex: 1,
-    padding: '6px 10px',
-    background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    flex: '1 1 auto',
+    padding: '5px 8px',
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: 8,
-    color: '#AAA',
+    color: '#888',
     fontFamily: 'monospace',
-    fontSize: 12,
+    fontSize: 11,
     cursor: 'pointer',
-    transition: 'all 0.15s',
+    whiteSpace: 'nowrap',
+    transition: 'all 0.12s',
   },
   tabActive: {
-    background: 'rgba(74,144,217,0.25)',
+    background: 'rgba(74,144,217,0.22)',
     borderColor: 'rgba(74,144,217,0.5)',
     color: '#6AB0F0',
   },
@@ -226,17 +246,22 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#CCC',
     fontFamily: 'monospace',
     transition: 'all 0.15s',
-    minWidth: 70,
+    minWidth: 68,
   },
   itemSprite: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     objectFit: 'contain',
     imageRendering: 'pixelated',
   },
   itemLabel: {
     fontSize: 10,
     color: '#AAA',
+    textAlign: 'center',
+  },
+  sizeTag: {
+    fontSize: 8,
+    color: '#555',
   },
   badge: {
     fontSize: 8,
@@ -249,21 +274,23 @@ const styles: Record<string, React.CSSProperties> = {
   strip: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    padding: '8px 14px',
-    background: 'rgba(12, 16, 28, 0.92)',
+    gap: 5,
+    padding: '8px 12px',
+    background: 'rgba(12, 16, 28, 0.93)',
     backdropFilter: 'blur(16px)',
     border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 50,
     pointerEvents: 'all',
     boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   btn: {
     display: 'flex',
     alignItems: 'center',
-    gap: 5,
-    padding: '8px 14px',
-    background: 'rgba(255,255,255,0.06)',
+    gap: 4,
+    padding: '7px 12px',
+    background: 'rgba(255,255,255,0.05)',
     border: '1px solid rgba(255,255,255,0.1)',
     borderRadius: 40,
     color: '#CCC',
@@ -274,7 +301,7 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   btnActive: {
-    background: 'rgba(74,144,217,0.25)',
+    background: 'rgba(74,144,217,0.22)',
     borderColor: 'rgba(74,144,217,0.5)',
     color: '#6AB0F0',
   },
@@ -287,8 +314,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#FF4136',
   },
   btnClose: {
-    padding: '8px 10px',
-    color: '#666',
+    padding: '7px 10px',
+    color: '#555',
   },
   btnLabel: {
     fontSize: 11,
@@ -297,6 +324,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 1,
     height: 20,
     background: 'rgba(255,255,255,0.1)',
+    margin: '0 2px',
   },
   placingHint: {
     color: '#AAA',
