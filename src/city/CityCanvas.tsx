@@ -1359,7 +1359,12 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
             onRemoveDecoration?.(col, row);
           } else if (placementMode.deco !== 'road') {
             // Road was already placed on mousedown; skip re-placing other decos
-            const [pw, ph] = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1];
+            const clickFlip = placementMode.flip ?? false;
+            const rawClickSize = STRUCTURE_SIZES[placementMode.deco] ?? [1, 1] as [number, number];
+            // Apply same flip permutation as the ghost preview (2×1 → 1×2)
+            const [pw, ph] = (clickFlip && rawClickSize[0] !== rawClickSize[1])
+              ? [rawClickSize[1], rawClickSize[0]]
+              : rawClickSize;
             const gc = col - Math.floor(pw / 2);
             const gr = row - Math.floor(ph / 2);
             const district = getDistrictAt(cityState.grid, col, row);
