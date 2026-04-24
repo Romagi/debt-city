@@ -227,6 +227,10 @@ canvas { display: block; }
       <label><input type="checkbox" id="showGrid" checked> Grille</label>
       <label><input type="checkbox" id="showAnchor" checked> Anchor</label>
       <label><input type="checkbox" id="showRepeat" checked> 3×3</label>
+      <label style="border-color:#f7c94e;color:#f7c94e"><input type="checkbox" id="flipH"> ↔ Flip H</label>
+    </div>
+    <div id="flipHint" style="display:none;font-size:10px;color:#888;margin-top:6px;">
+      Footprint permuté auto (2×1↔1×2). Recalibre xOff pour cette orientation.
     </div>
   </div>
 
@@ -253,6 +257,7 @@ const S = {
   baseRatio: 1.0, yOff: 0.5, xOff: 0.0,
   footCols: 1, footRows: 1,
   showGrid: true, showAnchor: true, showRepeat: true,
+  flipH: false,
 };
 
 let img = null;
@@ -303,34 +308,43 @@ function draw() {
     }
   }
 
+  // Effective footprint — swapped when flipping an asymmetric sprite (2×1 ↔ 1×2)
+  const effCols = (S.flipH && S.footCols !== S.footRows) ? S.footRows : S.footCols;
+  const effRows = (S.flipH && S.footCols !== S.footRows) ? S.footCols : S.footRows;
+
   // ── 2. Draw sprites ────────────────────────────────────────────────────
   if (img) {
-    const footprintW = (S.footCols + S.footRows) * (S.tileW / 2);
+    const footprintW = (effCols + effRows) * (S.tileW / 2);
     const scale = footprintW / (imgW * S.baseRatio);
     const sw = imgW * scale;
     const sh = imgH * scale;
 
     const reps = S.showRepeat ? 3 : 1;
-    const totalCols = reps * S.footCols;
-    const totalRows = reps * S.footRows;
+    const totalCols = reps * effCols;
+    const totalRows = reps * effRows;
     const startC = Math.floor((GRID - totalCols) / 2);
     const startR = Math.floor((GRID - totalRows) / 2);
 
     for (let ti = 0; ti < reps; ti++) {
       for (let tj = 0; tj < reps; tj++) {
-        const c = startC + ti * S.footCols;
-        const r = startR + tj * S.footRows;
-        if (c + S.footCols > GRID || r + S.footRows > GRID) continue;
+        const c = startC + ti * effCols;
+        const r = startR + tj * effRows;
+        if (c + effCols > GRID || r + effRows > GRID) continue;
 
         // South-tip anchor
-        const a = g2s(c + S.footCols - 0.5, r + S.footRows - 0.5);
+        const a = g2s(c + effCols - 0.5, r + effRows - 0.5);
         const ax = ox + a.x;
         const ay = oy + a.y;
 
-        const dx = ax - sw / 2 + S.tileW * S.xOff;
-        const dy = ay - sh     + S.tileH * S.yOff;
-
-        ctx.drawImage(img, dx, dy, sw, sh);
+        ctx.save();
+        ctx.translate(ax, ay);
+        if (S.flipH) {
+          ctx.scale(-1, 1);
+          ctx.drawImage(img, -sw / 2 - S.tileW * S.xOff, -sh + S.tileH * S.yOff, sw, sh);
+        } else {
+          ctx.drawImage(img, -sw / 2 + S.tileW * S.xOff, -sh + S.tileH * S.yOff, sw, sh);
+        }
+        ctx.restore();
       }
     }
   }
@@ -347,14 +361,14 @@ function draw() {
   // ── 4. Anchor dots ─────────────────────────────────────────────────────
   if (S.showAnchor && img) {
     const reps = S.showRepeat ? 3 : 1;
-    const anchorStartC = Math.floor((GRID - reps * S.footCols) / 2);
-    const anchorStartR = Math.floor((GRID - reps * S.footRows) / 2);
+    const anchorStartC = Math.floor((GRID - reps * effCols) / 2);
+    const anchorStartR = Math.floor((GRID - reps * effRows) / 2);
     for (let ti = 0; ti < reps; ti++) {
       for (let tj = 0; tj < reps; tj++) {
-        const c = anchorStartC + ti * S.footCols;
-        const r = anchorStartR + tj * S.footRows;
-        if (c + S.footCols > GRID || r + S.footRows > GRID) continue;
-        const a = g2s(c + S.footCols - 0.5, r + S.footRows - 0.5);
+        const c = anchorStartC + ti * effCols;
+        const r = anchorStartR + tj * effRows;
+        if (c + effCols > GRID || r + effRows > GRID) continue;
+        const a = g2s(c + effCols - 0.5, r + effRows - 0.5);
         dot(ox + a.x, oy + a.y, 5, '#4fa8f7');
       }
     }
@@ -385,18 +399,23 @@ function dot(x, y, r, color) {
 
 // ── Output ─────────────────────────────────────────────────────────────────
 function updateOutput() {
-  const footprintW = (S.footCols + S.footRows) * (S.tileW / 2);
+  const effCols    = (S.flipH && S.footCols !== S.footRows) ? S.footRows : S.footCols;
+  const effRows    = (S.flipH && S.footCols !== S.footRows) ? S.footCols : S.footRows;
+  const footprintW = (effCols + effRows) * (S.tileW / 2);
   const baseW      = imgW * S.baseRatio;
   const scale      = footprintW / baseW;
   const sw         = (imgW * scale).toFixed(1);
   const sh         = (imgH * scale).toFixed(1);
+  const flipLine   = S.flipH
+    ? `\nflipH       = true  ← ${S.footCols}×${S.footRows} → ${effCols}×${effRows}`
+    : '';
   document.getElementById('output').textContent =
 `ISO_TILE_W  = ${S.tileW}
 ISO_TILE_H  = ${S.tileH}
 
 baseRatio   = ${S.baseRatio.toFixed(3)}
 yOff        = ${S.yOff.toFixed(2)}
-xOff        = ${S.xOff.toFixed(2)}
+xOff        = ${S.xOff.toFixed(2)}${flipLine}
 
 footprintW  = ${footprintW}px
 scale       = ${scale.toFixed(4)}
@@ -406,11 +425,16 @@ sh          = ${sh}px`;
 
 // ── Copy ───────────────────────────────────────────────────────────────────
 function copyParams() {
-  const sel  = document.getElementById('spriteSelect');
-  const name = sel.options[sel.selectedIndex].text.split('.')[0];
+  const sel      = document.getElementById('spriteSelect');
+  const name     = sel.options[sel.selectedIndex].text.split('.')[0];
+  const effCols  = (S.flipH && S.footCols !== S.footRows) ? S.footRows : S.footCols;
+  const effRows  = (S.flipH && S.footCols !== S.footRows) ? S.footCols : S.footRows;
+  const fpStr    = S.flipH ? `${S.footCols}×${S.footRows} → flipped ${effCols}×${effRows}` : `${S.footCols}×${S.footRows}`;
+  const keyName  = S.flipH ? `${name}_flip` : name;
+  const flipTag  = S.flipH ? '  // FLIPPED — use with flip: true in PLACE_DECORATION' : '';
   const txt  =
-`// ${name}  footprint ${S.footCols}×${S.footRows}
-${name}: { baseRatio: ${S.baseRatio.toFixed(3)}, yOff: ${S.yOff.toFixed(2)}, xOff: ${S.xOff.toFixed(2)} },
+`// ${name}  footprint ${fpStr}
+${keyName}: { baseRatio: ${S.baseRatio.toFixed(3)}, yOff: ${S.yOff.toFixed(2)}, xOff: ${S.xOff.toFixed(2)} },${flipTag}
 // ISO_TILE_W=${S.tileW}  ISO_TILE_H=${S.tileH}`;
   navigator.clipboard.writeText(txt).catch(() => {});
   const btn = document.getElementById('copyBtn');
@@ -462,6 +486,12 @@ document.getElementById('footprint').addEventListener('change', function() {
   document.getElementById(id).addEventListener('change', function() {
     S[id] = this.checked; draw();
   });
+});
+
+document.getElementById('flipH').addEventListener('change', function() {
+  S.flipH = this.checked;
+  document.getElementById('flipHint').style.display = this.checked ? 'block' : 'none';
+  draw();
 });
 
 // ── Sprite loading ─────────────────────────────────────────────────────────

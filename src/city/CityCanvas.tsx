@@ -999,9 +999,10 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     const sh = sprite.height * scale;
     const dy = -sh + ISO_TILE_H * anchor.yOff;
     if (flip) {
-      // Mirror horizontally: ctx.scale(-1,1) + negate xOff so the anchor stays centred
+      // Mirror horizontally: ctx.scale(-1,1) flips the x-axis, so +xOff in draw coords
+      // becomes -xOff in screen space — which auto-inverts the offset correctly.
       ctx.scale(-1, 1);
-      ctx.drawImage(sprite, -sw / 2 - ISO_TILE_W * anchor.xOff, dy, sw, sh);
+      ctx.drawImage(sprite, -sw / 2 + ISO_TILE_W * anchor.xOff, dy, sw, sh);
     } else {
       ctx.drawImage(sprite, -sw / 2 + ISO_TILE_W * anchor.xOff, dy, sw, sh);
     }
