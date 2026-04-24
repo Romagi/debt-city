@@ -127,6 +127,39 @@ function placeFencesForDistrict(grid: GridState, district: DistrictBounds): Grid
   return { ...grid, fenceOverlay: overlay };
 }
 
+/** Place roads in the gap column (dc-1) and gap row (dr-1) of a district.
+ *  These gap tiles are the 1-tile-wide lanes between adjacent districts
+ *  (DISTRICT_GAP=1).  Roads only placed on empty cells (canPlace guard).
+ *  Uses deterministic entityIds (coord-based) → idempotent.
+ *
+ *  Col dc-1  : rows [dr-1 .. dr+size]  — covers gap above + district height + 1 below
+ *  Row dr-1  : cols [dc-1 .. dc+size]  — covers gap left  + district width  + 1 right
+ *  The extended bounds ensure gap-intersection tiles (dc-1, dr-1) are also placed. */
+function placeGapRoads(grid: GridState, district: DistrictBounds): GridState {
+  const { col: dc, row: dr, size } = district;
+  let g = grid;
+
+  const tryRoad = (c: number, r: number): void => {
+    if (c < 0 || c >= g.size || r < 0 || r >= g.size) return;
+    if (!canPlace(g, c, r, 1, 1)) return;
+    g = placeOnGrid(g, c, r, 1, 1, {
+      type: 'road',
+      entityId: `road_gap_${c}_${r}`,
+    });
+  };
+
+  // Gap column (W of district) — only if there's room outside the grid left edge
+  if (dc > 0) {
+    for (let r = dr - 1; r <= dr + size; r++) tryRoad(dc - 1, r);
+  }
+  // Gap row (N of district) — only if there's room outside the grid top edge
+  if (dr > 0) {
+    for (let c = dc - 1; c <= dc + size; c++) tryRoad(c, dr - 1);
+  }
+
+  return g;
+}
+
 // ─── Reducer ───
 
 export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
@@ -513,11 +546,12 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
         workingGrid = { ...state.grid, cells: newCells, districts: incoming.districts };
       }
 
-      // Place fences on the perimeter of every district that doesn't have them yet.
-      // The null-check inside placeFencesForDistrict ensures no overwrites.
+      // Place fences + gap roads for every district.
+      // fence flags are idempotent; roads use canPlace guard (skip if occupied).
       const gridBefore = workingGrid;
       for (const district of workingGrid.districts) {
         workingGrid = placeFencesForDistrict(workingGrid, district);
+        workingGrid = placeGapRoads(workingGrid, district);
       }
 
       const changed = hasNewDistricts || workingGrid !== gridBefore;
@@ -563,12 +597,24 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       if (district && !fitsInDistrict(district, col, row, w, h)) return state;
       if (!canPlace(state.grid, col, row, w, h)) return state;
       const entityId = nextId('deco');
-      const newGrid = placeOnGrid(state.grid, col, row, w, h, {
+      let newGrid = placeOnGrid(state.grid, col, row, w, h, {
         type: decorationType,
         entityId,
         projectId: projectId || undefined,
         flip: flip || undefined,
       });
+      // Roads clear fence overlay at the covered cells
+      if (decorationType === 'road') {
+        const overlay = getOverlay(newGrid).map(r => [...r]) as (FenceOverlayCell | null)[][];
+        for (let dr = row; dr < row + h; dr++) {
+          for (let dc = col; dc < col + w; dc++) {
+            if (dr >= 0 && dr < newGrid.size && dc >= 0 && dc < newGrid.size) {
+              overlay[dr][dc] = null;
+            }
+          }
+        }
+        newGrid = { ...newGrid, fenceOverlay: overlay };
+      }
       return { ...state, grid: newGrid };
     }
     case 'REMOVE_DECORATION': {

@@ -141,9 +141,9 @@ const SPRITE_ANCHOR: Record<string, { baseRatio: number; yOff: number; xOff: num
   stadium_football_american: { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   stadium_football_soccer:   { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   stadium_tennis:            { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
-  // ── Clôtures 1×1 (262×255) — xOff=0 car positionnement via edge offset ──
-  picket_fence_1:   { baseRatio: 1.760, yOff: 0.00, xOff:  0.00 },
-  picket_fence_2:   { baseRatio: 1.760, yOff: 0.00, xOff:  0.00 },
+  // ── Clôtures 1×1 (262×255) ✅ calibrés — rendu tile-center ────────────────
+  picket_fence_1:   { baseRatio: 1.760, yOff: 0.00, xOff:  0.24 },
+  picket_fence_2:   { baseRatio: 1.760, yOff: 0.00, xOff: -0.26 },
   // ── Legacy aliases (grids existantes) — redirects vers nouveaux sprites ───
   tree_sm:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
   tree_lg:          { baseRatio: 1.0, yOff: 0.50, xOff:  0.00 },
@@ -655,36 +655,32 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       ctx.restore();
     }
 
-    // ── Layer 4: Fence overlay — drawn above all objects, r-ascending for correct z-order ──
+    // ── Layer 4: Fence overlay — rendu au CENTRE de la tuile (tile-center) ───
     //
-    //  fence1_e → PicketFence1 at the SE ("/") edge of the tile.
-    //    Anchor offset from tile center: (+TW/4, +TH/4)
-    //    Used for: E boundary (on district's rightmost col) and
-    //              W boundary (on tile one column OUTSIDE the left edge).
+    //  fence1_e → PicketFence1, xOff=+0.24 → décale vers l'arête SE ("/").
+    //    Tuile W boundary (dc-1)  : SE edge of gap tile  = visual left district wall ✓
+    //    Tuile E boundary (dc+S-1): SE edge of last tile  = visual right district wall ✓
     //
-    //  fence2_s → PicketFence2 at the SW ("\") edge of the tile.
-    //    Anchor offset: (-TW/4, +TH/4)
-    //    Used for: S boundary (bottom row) and
-    //              N boundary (tile one row OUTSIDE the top edge).
+    //  fence2_s → PicketFence2, xOff=-0.26 → décale vers l'arête SW ("\").
+    //    Tuile N boundary (dr-1)  : SW edge of gap tile  = visual top district wall ✓
+    //    Tuile S boundary (dr+S-1): SW edge of last tile  = visual bottom district wall ✓
     //
-    //  Z-order: r-ascending loop ensures E fence (row=dr) renders AFTER N fence
-    //  (row=dr-1) at the NE corner → E visually in front. ✓
-    //  Cumulation with trees/decos in cells[][] is automatic (independent layers).
+    //  Z-order : loop r-ascendant → E fence (row=dr) dessiné après N fence (row=dr-1)
+    //  → E visible devant N à l'angle NE. ✓
+    //  Cumulation arbres/décos dans cells[][] : automatique (layers indépendants).
     if (grid.fenceOverlay) {
-      const tw4 = ISO_TILE_W / 4;   // 16 px
-      const th4 = ISO_TILE_H / 4;   // ~9.5 px
       for (let r = 0; r < grid.size; r++) {
         for (let c = 0; c < grid.size; c++) {
           const fence = grid.fenceOverlay[r]?.[c];
           if (!fence || (!fence.fence1_e && !fence.fence2_s)) continue;
           const { x: cx, y: cy } = gridToScreen(c + 0.5, r + 0.5);
           if (fence.fence1_e) {
-            ctx.save(); ctx.translate(cx + tw4, cy + th4);
+            ctx.save(); ctx.translate(cx, cy);
             drawSpriteOnGrid(ctx, 'picket_fence_1');
             ctx.restore();
           }
           if (fence.fence2_s) {
-            ctx.save(); ctx.translate(cx - tw4, cy + th4);
+            ctx.save(); ctx.translate(cx, cy);
             drawSpriteOnGrid(ctx, 'picket_fence_2');
             ctx.restore();
           }
