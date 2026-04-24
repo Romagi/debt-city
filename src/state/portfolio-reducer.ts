@@ -93,11 +93,19 @@ function getOverlay(grid: GridState): (FenceOverlayCell | null)[][] {
 }
 
 /** Write fences onto the fenceOverlay for a district's perimeter.
- *  North row   → fence2_n (PicketFence2 on NE edge = top-right in iso).
- *  South row   → fence2_s (PicketFence2 on SW edge = bottom-left).
- *  West col    → fence1_w (PicketFence1 on NW edge = top-left).
- *  East col    → fence1_e (PicketFence1 on SE edge = bottom-right).
- *  Corner cells get two flags → two fence sprites rendered. */
+ *
+ *  fence1_e = PicketFence1 at the SE ("/") edge of a tile.
+ *    E boundary → placed ON the rightmost column  (dc + size - 1)  → outer-right edge ✓
+ *    W boundary → placed on the column OUTSIDE     (dc - 1)         → that tile's SE edge
+ *                 == the NW edge of (dc) == the visual left boundary ✓
+ *
+ *  fence2_s = PicketFence2 at the SW ("\") edge of a tile.
+ *    S boundary → placed ON the bottom row         (dr + size - 1)  → outer-bottom edge ✓
+ *    N boundary → placed on the row OUTSIDE         (dr - 1)         → that tile's SW edge
+ *                 == the NE edge of (dr) == the visual top boundary ✓
+ *
+ *  Z-order: the rendering loop draws r ascending, so E fences (row=dr…) are
+ *  drawn AFTER N fences (row=dr-1) → E appears in front at the NE corner. ✓ */
 function placeFencesForDistrict(grid: GridState, district: DistrictBounds): GridState {
   const { col: dc, row: dr, size } = district;
   const overlay = getOverlay(grid).map(r => [...r]) as (FenceOverlayCell | null)[][];
@@ -107,23 +115,14 @@ function placeFencesForDistrict(grid: GridState, district: DistrictBounds): Grid
     overlay[r][c] = { ...overlay[r][c], ...patch };
   };
 
-  // North row → fence2_n (NE/top-right edge)
-  for (let c = dc; c < dc + size; c++) {
-    set(c, dr, { fence2_n: true });
-  }
-  // South row → fence2_s (SW/bottom-left edge)
-  for (let c = dc; c < dc + size; c++) {
-    set(c, dr + size - 1, { fence2_s: true });
-  }
-  // West col → fence1_w (NW/top-left edge)
-  for (let r = dr; r < dr + size; r++) {
-    set(dc, r, { fence1_w: true });
-  }
-  // East col → fence1_e (SE/bottom-right edge)
-  for (let r = dr; r < dr + size; r++) {
-    set(dc + size - 1, r, { fence1_e: true });
-  }
-  // Corners automatically have two flags from the loops above
+  // E boundary → fence1_e on rightmost column
+  for (let r = dr; r < dr + size; r++) set(dc + size - 1, r, { fence1_e: true });
+  // W boundary → fence1_e on the column just outside the left edge
+  for (let r = dr; r < dr + size; r++) set(dc - 1,        r, { fence1_e: true });
+  // S boundary → fence2_s on bottom row
+  for (let c = dc; c < dc + size; c++) set(c, dr + size - 1, { fence2_s: true });
+  // N boundary → fence2_s on the row just outside the top edge
+  for (let c = dc; c < dc + size; c++) set(c, dr - 1,        { fence2_s: true });
 
   return { ...grid, fenceOverlay: overlay };
 }
@@ -551,7 +550,7 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       // Fence types go to the overlay instead of the main grid
       if (decorationType === 'fence_1' || decorationType === 'fence_2') {
         const overlay = getOverlay(state.grid).map(r => [...r]) as (FenceOverlayCell | null)[][];
-        const patch: FenceOverlayCell = decorationType === 'fence_1' ? { fence1_w: true } : { fence2_n: true };
+        const patch: FenceOverlayCell = decorationType === 'fence_1' ? { fence1_e: true } : { fence2_s: true };
         overlay[row][col] = { ...overlay[row][col], ...patch };
         return { ...state, grid: { ...state.grid, fenceOverlay: overlay } };
       }
@@ -577,7 +576,7 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
 
       // If the cell has fence overlay entries, clear them first / instead
       const fenceCell = state.grid.fenceOverlay?.[row]?.[col];
-      if (fenceCell && (fenceCell.fence1_w || fenceCell.fence1_e || fenceCell.fence2_n || fenceCell.fence2_s)) {
+      if (fenceCell && (fenceCell.fence1_e || fenceCell.fence2_s)) {
         const overlay = state.grid.fenceOverlay!.map(r => [...r]) as (FenceOverlayCell | null)[][];
         overlay[row][col] = null;
         return { ...state, grid: { ...state.grid, fenceOverlay: overlay } };

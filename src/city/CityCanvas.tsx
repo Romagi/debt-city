@@ -655,33 +655,32 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       ctx.restore();
     }
 
-    // ── Layer 4: Fence overlay — each variant placed on its own tile edge ──
-    // Edge midpoints relative to tile center (south-tip of a 1×1 diamond):
-    //   fence1_w → NW edge (top-left in iso)  : (-TW/4, -TH/4)
-    //   fence1_e → SE edge (bottom-right)      : (+TW/4, +TH/4)
-    //   fence2_n → NE edge (top-right)         : (+TW/4, -TH/4)
-    //   fence2_s → SW edge (bottom-left)       : (-TW/4, +TH/4)
+    // ── Layer 4: Fence overlay — drawn above all objects, r-ascending for correct z-order ──
+    //
+    //  fence1_e → PicketFence1 at the SE ("/") edge of the tile.
+    //    Anchor offset from tile center: (+TW/4, +TH/4)
+    //    Used for: E boundary (on district's rightmost col) and
+    //              W boundary (on tile one column OUTSIDE the left edge).
+    //
+    //  fence2_s → PicketFence2 at the SW ("\") edge of the tile.
+    //    Anchor offset: (-TW/4, +TH/4)
+    //    Used for: S boundary (bottom row) and
+    //              N boundary (tile one row OUTSIDE the top edge).
+    //
+    //  Z-order: r-ascending loop ensures E fence (row=dr) renders AFTER N fence
+    //  (row=dr-1) at the NE corner → E visually in front. ✓
+    //  Cumulation with trees/decos in cells[][] is automatic (independent layers).
     if (grid.fenceOverlay) {
-      const tw4 = ISO_TILE_W / 4;   // 16
-      const th4 = ISO_TILE_H / 4;   // 9.5
+      const tw4 = ISO_TILE_W / 4;   // 16 px
+      const th4 = ISO_TILE_H / 4;   // ~9.5 px
       for (let r = 0; r < grid.size; r++) {
         for (let c = 0; c < grid.size; c++) {
           const fence = grid.fenceOverlay[r]?.[c];
-          if (!fence || (!fence.fence1_w && !fence.fence1_e && !fence.fence2_n && !fence.fence2_s)) continue;
+          if (!fence || (!fence.fence1_e && !fence.fence2_s)) continue;
           const { x: cx, y: cy } = gridToScreen(c + 0.5, r + 0.5);
-          if (fence.fence1_w) {
-            ctx.save(); ctx.translate(cx - tw4, cy - th4);
-            drawSpriteOnGrid(ctx, 'picket_fence_1');
-            ctx.restore();
-          }
           if (fence.fence1_e) {
             ctx.save(); ctx.translate(cx + tw4, cy + th4);
             drawSpriteOnGrid(ctx, 'picket_fence_1');
-            ctx.restore();
-          }
-          if (fence.fence2_n) {
-            ctx.save(); ctx.translate(cx + tw4, cy - th4);
-            drawSpriteOnGrid(ctx, 'picket_fence_2');
             ctx.restore();
           }
           if (fence.fence2_s) {

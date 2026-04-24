@@ -413,15 +413,20 @@ export interface DistrictBounds {
 }
 
 /** Per-cell fence overlay — independent of the main cells grid.
- *  fence1_w = PicketFence1 on West/NW edge  (left boundary of district in iso).
- *  fence1_e = PicketFence1 on East/SE edge  (right boundary).
- *  fence2_n = PicketFence2 on North/NE edge (top boundary).
- *  fence2_s = PicketFence2 on South/SW edge (bottom boundary).
- *  Multiple flags can be true on the same cell (corners get two fences). */
+ *
+ *  fence1_e = PicketFence1 at the SE edge of this tile (the "/" edge facing east).
+ *    Used for:  E boundary  → on the rightmost column tiles.
+ *               W boundary  → on the column just OUTSIDE the district (dc-1).
+ *
+ *  fence2_s = PicketFence2 at the SW edge of this tile (the "\" edge facing south).
+ *    Used for:  S boundary  → on the bottom row tiles.
+ *               N boundary  → on the row just OUTSIDE the district (dr-1).
+ *
+ *  Multiple flags can coexist (SE corner has both on the same tile).
+ *  Fences are rendered above all objects; cumulation with trees/decos is free
+ *  because the overlay is independent of cells[][]. */
 export interface FenceOverlayCell {
-  fence1_w?: boolean;
   fence1_e?: boolean;
-  fence2_n?: boolean;
   fence2_s?: boolean;
 }
 
