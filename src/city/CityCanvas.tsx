@@ -437,6 +437,9 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   const [, forceRender] = useState(0);
   const hoveredTargetRef = useRef<ClickTarget | null>(null);
+  /** District being hovered (cursor inside its bounds, no specific structure under the pointer).
+   *  Drives the hover-only district tooltip. Stays null while placementMode is active. */
+  const hoveredDistrictRef = useRef<{ projectId: string } | null>(null);
   const dragRef = useRef({ active: false, startX: 0, startY: 0, camX: 0, camY: 0, moved: false });
   const needsRedrawRef = useRef(true);
   const canvasSizeRef = useRef({ w: 0, h: 0 });
@@ -644,15 +647,19 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     // Ghost / eraser preview (always on top of scene objects)
     drawGhostAndEraser(ctx, cityState.grid);
 
-    // District labels (always on top of everything)
-    for (const district of sortedDistricts) drawDistrictLabel(ctx, district);
+    // Permanent district labels removed (Lot 4) — replaced by hover-only tooltips below.
 
     // Focus highlight (pulsing diamond outline around the focused district)
     drawFocusHighlight(ctx);
 
-    // Tooltip — read from ref
+    // Tooltip — structure tooltip takes priority over district tooltip.
+    // District tooltip is also suppressed in placement mode to avoid noise during construction.
     const hovered = hoveredTargetRef.current;
-    if (hovered) drawTooltip(ctx, hovered);
+    if (hovered) {
+      drawTooltip(ctx, hovered);
+    } else if (!placementMode && hoveredDistrictRef.current) {
+      drawDistrictTooltip(ctx, hoveredDistrictRef.current);
+    }
 
     ctx.restore();
     // HUD intentionally removed — all of it (title, legend, weather) lives in <CityHeader/>
@@ -932,36 +939,104 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     }
   }
 
-  /** District label — drawn after the unified object pass so it always appears on top. */
-  function drawDistrictLabel(ctx: CanvasRenderingContext2D, district: CityDistrict) {
+  /** Hover-only district tooltip (Lot 4) — replaces the previous always-on label.
+   *  Renders a rich card above the district's main building with the deal title,
+   *  borrower, amount, covenant + tranche + lender counts, and a breach badge.
+   *  Suppressed while in placement mode (handled by the caller). */
+  function drawDistrictTooltip(ctx: CanvasRenderingContext2D, hovered: { projectId: string }) {
+    const district = cityState.districts.find(d => d.buildings[0]?.project.id === hovered.projectId);
+    if (!district) return;
     const b = district.buildings[0];
     if (!b) return;
-    const labelX = b.x;
-    const labelY = b.y + b.width * 0.55 * district.scale + 18;
+
+    const project = b.project;
+    const breached = project.covenants.some(c => c.terms.some(t => t.currentStatus === 'breached'));
+    const totalTerms = project.covenants.reduce((s, c) => s + c.terms.length, 0);
+
+    const title = truncate(project.title, 32);
+    const subtitle = `${district.borrower.corporateName} · ${formatMoney(project.globalFundingAmount.amount)}`;
+    const meta = [
+      `${project.tranches.length} tranche${project.tranches.length > 1 ? 's' : ''}`,
+      `${project.lenders.length} lender${project.lenders.length > 1 ? 's' : ''}`,
+      `${project.covenants.length} covenant${project.covenants.length > 1 ? 's' : ''} · ${totalTerms} term${totalTerms > 1 ? 's' : ''}`,
+    ];
+
+    // Position above the main building (south-tip y - height - margin)
+    const tx = b.x;
+    const ty = b.y - b.height - 32;
 
     ctx.save();
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#FFF';
-    ctx.font = 'bold 10px monospace';
-    ctx.shadowColor = 'rgba(0,0,0,0.7)';
-    ctx.shadowBlur = 4;
-    ctx.fillText(truncate(b.project.title, 28), labelX, labelY);
-    ctx.font = '9px monospace';
-    ctx.fillStyle = '#AAA';
-    ctx.fillText(
-      `${district.borrower.corporateName} \u00B7 ${formatMoney(b.project.globalFundingAmount.amount)}`,
-      labelX, labelY + 13,
-    );
-    const esgColors = { good: '#2ECC40', neutral: '#FFDC00', bad: '#FF4136' };
-    ctx.fillStyle = esgColors[district.esgScore];
-    ctx.shadowBlur = 0;
+    ctx.font = '700 13px Quicksand, system-ui, sans-serif';
+    const titleW = ctx.measureText(title + (breached ? '   ⚠️' : '')).width;
+    ctx.font = '500 11px Quicksand, system-ui, sans-serif';
+    const subW = ctx.measureText(subtitle).width;
+    const metaW = Math.max(...meta.map(m => ctx.measureText(m).width));
+    const innerW = Math.max(titleW, subW, metaW);
+    const padX = 14, padY = 12;
+    const rowH = 16;
+    const titleH = 18;
+    const totalH = titleH + 4 + rowH + 8 + meta.length * rowH + padY * 2;
+    const tooltipW = innerW + padX * 2;
+    const left = tx - tooltipW / 2;
+    const top = ty - totalH;
+
+    // Card background — warm dark, rounded, soft shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = 'rgba(28, 22, 18, 0.96)';
     ctx.beginPath();
-    ctx.arc(labelX - ctx.measureText(district.borrower.corporateName).width / 2 - 8, labelY + 9, 3, 0, Math.PI * 2);
+    ctx.roundRect(left, top, tooltipW, totalH, 12);
     ctx.fill();
-    ctx.textAlign = 'left';
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Hairline border
+    ctx.strokeStyle = 'rgba(255, 235, 200, 0.14)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(left + 0.5, top + 0.5, tooltipW - 1, totalH - 1, 12);
+    ctx.stroke();
+
+    // Pointer arrow
+    ctx.fillStyle = 'rgba(28, 22, 18, 0.96)';
+    ctx.beginPath();
+    ctx.moveTo(tx - 6, top + totalH);
+    ctx.lineTo(tx, top + totalH + 6);
+    ctx.lineTo(tx + 6, top + totalH);
+    ctx.closePath();
+    ctx.fill();
+
+    // Title row
+    let cy = top + padY + 4;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#F5EFE5';
+    ctx.font = '700 13px Quicksand, system-ui, sans-serif';
+    ctx.fillText(title, left + padX, cy + 12);
+    if (breached) {
+      ctx.font = '500 12px Quicksand, system-ui, sans-serif';
+      ctx.fillStyle = '#FF7461';
+      ctx.fillText('⚠️', left + padX + ctx.measureText(title).width + 8, cy + 12);
+    }
+    cy += titleH + 4;
+
+    // Subtitle (borrower + amount)
+    ctx.fillStyle = '#B8AC9A';
+    ctx.font = '600 11px Quicksand, system-ui, sans-serif';
+    ctx.fillText(subtitle, left + padX, cy + 11);
+    cy += rowH + 8;
+
+    // Meta lines
+    ctx.font = '500 11px Quicksand, system-ui, sans-serif';
+    ctx.fillStyle = '#7A6F5F';
+    for (const line of meta) {
+      ctx.fillText(line, left + padX, cy + 11);
+      cy += rowH;
+    }
+
     ctx.restore();
   }
+
 
   // ─── Main building (deal + tranches) — sprite-based ───
 
@@ -1444,7 +1519,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         needsRedrawRef.current = true;
         forceRender(n => n + 1); // Update cursor style
       }
-      // Track hovered grid cell
+      // Track hovered grid cell + hovered district (for the hover-only district tooltip)
       const canvas = canvasRef.current;
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
@@ -1453,12 +1528,19 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         const wy = (e.clientY - rect.top - rect.height * 0.35 - cam.y) / cam.zoom;
         const cell = screenToGrid(wx, wy);
         const prevCell = hoveredCellRef.current;
+        const inGrid = cell.col >= 0 && cell.col < GRID_SIZE && cell.row >= 0 && cell.row < GRID_SIZE;
         if (!prevCell || prevCell.col !== cell.col || prevCell.row !== cell.row) {
-          if (cell.col >= 0 && cell.col < GRID_SIZE && cell.row >= 0 && cell.row < GRID_SIZE) {
-            hoveredCellRef.current = cell;
-          } else {
-            hoveredCellRef.current = null;
-          }
+          hoveredCellRef.current = inGrid ? cell : null;
+          needsRedrawRef.current = true;
+        }
+        // District hover — only when not in placement mode (suppressed during construction).
+        const newDistrict = (!placementMode && inGrid)
+          ? getDistrictAt(cityState.grid, cell.col, cell.row)
+          : null;
+        const prevDistrictId = hoveredDistrictRef.current?.projectId ?? null;
+        const newDistrictId = newDistrict?.projectId ?? null;
+        if (prevDistrictId !== newDistrictId) {
+          hoveredDistrictRef.current = newDistrict ? { projectId: newDistrict.projectId } : null;
           needsRedrawRef.current = true;
         }
       }
@@ -1613,7 +1695,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={() => { dragRef.current = { ...dragRef.current, active: false }; hoveredTargetRef.current = null; needsRedrawRef.current = true; }}
+      onMouseLeave={() => { dragRef.current = { ...dragRef.current, active: false }; hoveredTargetRef.current = null; hoveredDistrictRef.current = null; needsRedrawRef.current = true; }}
       onWheel={handleWheel}
       onContextMenu={handleContextMenu}
     />
