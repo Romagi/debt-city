@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef, useCallback } from 'react';
 import type { Portfolio, WeatherState } from '../types/portfolio';
 import HeaderDrawer from './HeaderDrawer';
 import MoneyDrawer from './MoneyDrawer';
@@ -37,8 +37,13 @@ const WEATHER_ICON: Record<WeatherState, string> = {
  *
  * Layout: [🏛 City Name ▼]  [☀️]  [💰] [🌤] [🗺]
  *           ↓ menu                  ↓ each opens a drawer below the bandeau
+ *
+ * Wrapped in React.memo (see bottom of file): when GameScreen re-renders due to
+ * activeTarget / modal / placementMode / focusRequest changes, this component
+ * skips re-rendering as long as its own props (slug, portfolio, weather, callbacks)
+ * are stable. The callbacks are useCallback'd in App.tsx for that reason.
  */
-export default function CityHeader({
+function CityHeader({
   slug, portfolio, weather,
   onFocusDistrict, onAddDeal, onAddBorrower, onSwitchCity, onQuit,
 }: Props) {
@@ -78,24 +83,35 @@ export default function CityHeader({
     };
   }, [menuOpen]);
 
-  const toggleDrawer = (kind: DrawerKind) => {
-    setOpenDrawer(prev => (prev === kind ? null : kind));
-  };
+  // ─── Stable handlers (useCallback) ─────────────────────────────────────────
+  // Drawer children are wrapped in React.memo, so passing inline lambdas would
+  // bypass the memo and force re-renders on every CityHeader render. Stabilising
+  // these handlers keeps the memo effective.
 
+  const closeDrawer     = useCallback(() => setOpenDrawer(null), []);
+  const toggleMenu      = useCallback(() => setMenuOpen(o => !o), []);
+  const openSwitchCity  = useCallback(() => { setMenuOpen(false); setShowSwitchModal(true); }, []);
+  const closeSwitchCity = useCallback(() => setShowSwitchModal(false), []);
+  const onQuitClick     = useCallback(() => { setMenuOpen(false); onQuit(); }, [onQuit]);
+
+  const onMoneyClick     = useCallback(() => setOpenDrawer(prev => prev === 'money'     ? null : 'money'),     []);
+  const onWeatherClick   = useCallback(() => setOpenDrawer(prev => prev === 'weather'   ? null : 'weather'),   []);
+  const onDirectoryClick = useCallback(() => setOpenDrawer(prev => prev === 'directory' ? null : 'directory'), []);
+
+  const handleSwitchSelected = useCallback((newSlug: string, p: Portfolio) => {
+    setShowSwitchModal(false);
+    setMenuOpen(false);
+    onSwitchCity(newSlug, p);
+  }, [onSwitchCity]);
+
+  // arrowOffset reads layout — runs during render, no need to memoise.
   const arrowOffset = (ref: React.RefObject<HTMLButtonElement | null>): number | undefined => {
     const el = ref.current;
     const header = headerRef.current;
     if (!el || !header) return undefined;
     const elRect = el.getBoundingClientRect();
     const headerRect = header.getBoundingClientRect();
-    // Offset of the button center from the viewport center (header is centered too)
     return elRect.left + elRect.width / 2 - (headerRect.left + headerRect.width / 2);
-  };
-
-  const handleSwitchSelected = (newSlug: string, portfolio: Portfolio) => {
-    setShowSwitchModal(false);
-    setMenuOpen(false);
-    onSwitchCity(newSlug, portfolio);
   };
 
   return (
@@ -103,7 +119,7 @@ export default function CityHeader({
       <div ref={headerRef} style={styles.header}>
         {/* City card with menu */}
         <div style={styles.cityCardWrap}>
-          <button style={styles.cityCard} onClick={() => setMenuOpen(o => !o)}>
+          <button style={styles.cityCard} onClick={toggleMenu}>
             <span style={styles.cityIcon}>🏛️</span>
             <span style={styles.cityName}>{slug}</span>
             <span style={styles.chevron}>{menuOpen ? '▴' : '▾'}</span>
@@ -111,16 +127,13 @@ export default function CityHeader({
 
           {menuOpen && (
             <div style={styles.menu}>
-              <button
-                style={styles.menuItem}
-                onClick={() => { setMenuOpen(false); setShowSwitchModal(true); }}
-              >
+              <button style={styles.menuItem} onClick={openSwitchCity}>
                 <span style={styles.menuIcon}>🔄</span> Changer de ville
               </button>
               <div style={styles.menuDivider} />
               <button
                 style={{ ...styles.menuItem, color: '#FF8B7B' }}
-                onClick={() => { setMenuOpen(false); onQuit(); }}
+                onClick={onQuitClick}
               >
                 <span style={styles.menuIcon}>🚪</span> Quitter la partie
               </button>
@@ -140,21 +153,21 @@ export default function CityHeader({
             icon="💰"
             label="Argent"
             active={openDrawer === 'money'}
-            onClick={() => toggleDrawer('money')}
+            onClick={onMoneyClick}
           />
           <ActionButton
             ref={weatherBtnRef}
             icon="🌤"
             label="Météo"
             active={openDrawer === 'weather'}
-            onClick={() => toggleDrawer('weather')}
+            onClick={onWeatherClick}
           />
           <ActionButton
             ref={directoryBtnRef}
             icon="🗺"
             label="Annuaire"
             active={openDrawer === 'directory'}
-            onClick={() => toggleDrawer('directory')}
+            onClick={onDirectoryClick}
           />
         </div>
       </div>
@@ -164,7 +177,7 @@ export default function CityHeader({
         <HeaderDrawer
           arrowAtX={arrowOffset(moneyBtnRef)}
           width={360}
-          onClose={() => setOpenDrawer(null)}
+          onClose={closeDrawer}
         >
           <MoneyDrawer portfolio={portfolio} />
         </HeaderDrawer>
@@ -173,7 +186,7 @@ export default function CityHeader({
         <HeaderDrawer
           arrowAtX={arrowOffset(weatherBtnRef)}
           width={360}
-          onClose={() => setOpenDrawer(null)}
+          onClose={closeDrawer}
         >
           <WeatherDrawer portfolio={portfolio} weather={weather} />
         </HeaderDrawer>
@@ -182,14 +195,14 @@ export default function CityHeader({
         <HeaderDrawer
           arrowAtX={arrowOffset(directoryBtnRef)}
           width={420}
-          onClose={() => setOpenDrawer(null)}
+          onClose={closeDrawer}
         >
           <DirectoryDrawer
             portfolio={portfolio}
             onFocusDistrict={onFocusDistrict}
             onAddDeal={onAddDeal}
             onAddBorrower={onAddBorrower}
-            onClose={() => setOpenDrawer(null)}
+            onClose={closeDrawer}
           />
         </HeaderDrawer>
       )}
@@ -197,13 +210,15 @@ export default function CityHeader({
       {showSwitchModal && (
         <SwitchCityModal
           currentSlug={slug}
-          onClose={() => setShowSwitchModal(false)}
+          onClose={closeSwitchCity}
           onSwitch={handleSwitchSelected}
         />
       )}
     </>
   );
 }
+
+export default memo(CityHeader);
 
 // ─── ActionButton (forwardRef) ───
 

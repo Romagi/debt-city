@@ -25,12 +25,7 @@ const STATE_OVERLAY: Record<string, string> = {
   closed: 'rgba(80, 80, 80, 0.6)',
 };
 
-const TRAFFIC_LIGHT_COLORS: Record<string, string> = {
-  green: '#2ECC40',
-  orange: '#FF851B',
-  red: '#FF4136',
-  grey: '#AAAAAA',
-};
+// (TRAFFIC_LIGHT_COLORS removed — traffic-light dot dropped from townhalls)
 
 // ─── Sizes for sub-structures ───
 const TOWNHALL_W = 38;
@@ -466,11 +461,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     [cityState]
   );
 
-  // Check if any alerts need continuous animation
-  const hasAnimations = useMemo(
-    () => cityState.districts.some(d => d.buildings.some(b => b.alertLevel !== 'none')),
-    [cityState]
-  );
+  // (smoke/fire animation removed → no need for a continuous-redraw flag anymore)
 
   // ─── Pre-computed render scene (PERF) ──────────────────────────────────────
   // Built once per cityState change. The draw loop iterates these arrays
@@ -1019,10 +1010,10 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.restore();
   }
 
-  // ─── Townhall (mairie) — sprite + traffic light + alerts ───
+  // ─── Townhall (mairie) — sprite + covenant count badge ───
 
   function drawTownhall(ctx: CanvasRenderingContext2D, building: CityBuilding) {
-    const { townhallPos, alertLevel, trafficLight, project } = building;
+    const { townhallPos, project } = building;
 
     const tw = TOWNHALL_W;
     const th = TOWNHALL_H;
@@ -1046,32 +1037,10 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
 
-    // Traffic light
-    const tlX = tw / 2 + 8;
-    const tlY = -th * 0.5;
-    ctx.fillStyle = '#333';
-    ctx.fillRect(tlX - 0.5, tlY + 4, 1, 14);
-    ctx.fillStyle = '#2A2A2A';
-    ctx.fillRect(tlX - 3, tlY - 5, 6, 10);
-    ctx.fillStyle = TRAFFIC_LIGHT_COLORS[trafficLight];
-    ctx.shadowColor = TRAFFIC_LIGHT_COLORS[trafficLight];
-    ctx.shadowBlur = trafficLight === 'red' ? 12 : 6;
-    ctx.beginPath(); ctx.arc(tlX, tlY, 3.5, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Smoke / fire alerts
-    if (alertLevel !== 'none') {
-      const time = Date.now() / 1000;
-      for (let i = 0; i < 6; i++) {
-        const px = Math.sin(time * 1.5 + i * 1.7) * 6;
-        const py = -th - 14 - i * 5.5 - Math.sin(time * 2.5 + i * 0.9) * 3;
-        const size = (alertLevel === 'fire' ? 5.5 : 3.5) - i * 0.5;
-        ctx.fillStyle = alertLevel === 'fire'
-          ? (i < 2 ? `rgba(255, ${50 + i * 35}, 15, ${0.75 - i * 0.1})` : `rgba(80, 80, 80, ${0.3 - i * 0.04})`)
-          : `rgba(160, 160, 160, ${0.35 - i * 0.05})`;
-        ctx.beginPath(); ctx.arc(px, py, Math.max(size, 1), 0, Math.PI * 2); ctx.fill();
-      }
-    }
+    // Traffic light + smoke/fire animation removed.
+    // The alert state remains visible via the ⚠️ marker in the Annuaire and via
+    // the WeatherDrawer (deals en alerte). The trafficLight data field is still
+    // computed in utils.ts in case we want to repurpose it later.
 
     ctx.restore();
   }
@@ -1259,7 +1228,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       lines = [
         `Mairie \u2014 ${building.project.title}`,
         `${covenantCount} covenant${covenantCount > 1 ? 's' : ''}`,
-        `Status: ${building.trafficLight}`,
       ];
     } else if (target.kind === 'shop') {
       tx = building.shopPos.x;
@@ -1590,42 +1558,33 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     return () => ro.disconnect();
   }, []);
 
-  // ─── Conditional RAF loop with 30fps throttle (PERF) ───
+  // ─── Conditional RAF loop (PERF) ───
   //
-  // Strategy:
-  //   • A redraw triggered by user action (state change, hover, drag, focus anim)
-  //     runs immediately on the next frame for max responsiveness.
-  //   • A redraw triggered ONLY by hasAnimations (smoke/fire on alerted buildings)
-  //     is throttled to 30fps — the human eye can't tell the difference and we
-  //     halve the canvas CPU cost while there's no interaction.
+  // The canvas is now fully event-driven: it only redraws when something
+  // explicitly sets `needsRedrawRef.current = true` (user action, state change,
+  // focus animation tick, etc.). When idle, the loop keeps rAF alive but skips
+  // the draw entirely — near-zero CPU cost.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
     let id: number;
-    let lastDrawTs = 0;
-    const ANIM_INTERVAL_MS = 1000 / 30; // 30fps cap when only animating
 
     function render() {
-      const now = performance.now();
-      const manualRedraw = needsRedrawRef.current;
-      const animRedrawDue = hasAnimations && (now - lastDrawTs) >= ANIM_INTERVAL_MS;
-
-      if (manualRedraw || animRedrawDue) {
+      if (needsRedrawRef.current) {
         const dpr = window.devicePixelRatio || 1;
         const { w, h } = canvasSizeRef.current;
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
         draw(ctx!, w, h);
         needsRedrawRef.current = false;
-        lastDrawTs = now;
       }
       id = requestAnimationFrame(render);
     }
     needsRedrawRef.current = true;
     render();
     return () => cancelAnimationFrame(id);
-  }, [draw, hasAnimations]);
+  }, [draw]);
 
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();

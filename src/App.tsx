@@ -1,4 +1,4 @@
-import { useState, useMemo, useReducer, useEffect, useRef } from 'react';
+import { useState, useMemo, useReducer, useEffect, useRef, useCallback } from 'react';
 import CityCanvas from './city/CityCanvas';
 import BuildingPanel from './panels/BuildingPanel';
 import TownhallPanel from './panels/TownhallPanel';
@@ -80,6 +80,16 @@ function GameScreen({
   /** Bumping `ts` re-triggers the camera focus animation in CityCanvas, even on the same projectId. */
   const [focusRequest, setFocusRequest] = useState<{ projectId: string; ts: number } | null>(null);
 
+  // Stable handlers for <CityHeader/> — prevent React.memo wrapper from being bypassed.
+  // These are intentionally referentially stable (empty deps) so CityHeader can skip
+  // re-rendering when only `activeTarget`, `modal`, `placementMode` or `focusRequest` change.
+  const handleFocusDistrict = useCallback(
+    (projectId: string) => setFocusRequest({ projectId, ts: Date.now() }),
+    [],
+  );
+  const handleAddDeal     = useCallback(() => setModal({ type: 'deal' }),     []);
+  const handleAddBorrower = useCallback(() => setModal({ type: 'borrower' }), []);
+
   // F key → toggle flip while placing a decoration
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -148,9 +158,9 @@ function GameScreen({
         slug={slug}
         portfolio={portfolio}
         weather={cityState.weather}
-        onFocusDistrict={(projectId) => setFocusRequest({ projectId, ts: Date.now() })}
-        onAddDeal={() => setModal({ type: 'deal' })}
-        onAddBorrower={() => setModal({ type: 'borrower' })}
+        onFocusDistrict={handleFocusDistrict}
+        onAddDeal={handleAddDeal}
+        onAddBorrower={handleAddBorrower}
         onSwitchCity={onSwitchCity}
         onQuit={onQuit}
       />
