@@ -17,9 +17,10 @@ import Toolbar from './panels/Toolbar';
 import LandingScreen from './screens/LandingScreen';
 import { mockPortfolio } from './api/mock-data';
 import { portfolioReducer } from './state/portfolio-reducer';
+import { useUndoStack } from './state/undo-stack';
 import { buildCityState } from './city/utils';
 import { useAutoSave } from './storage/useAutoSave';
-import type { Portfolio, ClickTarget, Borrower, Project, Tranche, Lender, Covenant } from './types/portfolio';
+import type { Portfolio, ClickTarget, Borrower, Project, Tranche, Lender, Covenant, CellType } from './types/portfolio';
 import type { PlacementMode } from './city/CityCanvas';
 
 // ─── Modal state ───
@@ -90,20 +91,78 @@ function GameScreen({
   const handleAddDeal     = useCallback(() => setModal({ type: 'deal' }),     []);
   const handleAddBorrower = useCallback(() => setModal({ type: 'borrower' }), []);
 
-  // F key → toggle flip while placing a decoration
+  // ─── Undo/Redo for construction actions ────────────────────────────────────
+  // We push a snapshot of the grid BEFORE each PLACE_DECORATION / REMOVE_DECORATION
+  // / MOVE_STRUCTURE action. Cmd+Z pops the stack and dispatches RESTORE_GRID.
+  // The hook is intentionally scoped to grid-only — modals (deal/borrower edits)
+  // are not part of the undo history per spec.
+  const { pushSnapshot, undo, redo, canUndo, canRedo } = useUndoStack(portfolio.grid, dispatch);
+
+  // Construction action wrappers — push a "before" snapshot then dispatch.
+  // Identity changes when portfolio.grid does, but no consumer is memoised on them.
+  const handleMoveStructure = useCallback(
+    (entityId: string, structureType: string, toCol: number, toRow: number, width: number, height: number) => {
+      pushSnapshot(portfolio.grid);
+      dispatch({ type: 'MOVE_STRUCTURE', payload: { entityId, structureType: structureType as any, toCol, toRow, width, height } });
+    },
+    [portfolio.grid, pushSnapshot],
+  );
+  const handlePlaceDecoration = useCallback(
+    (col: number, row: number, projectId: string) => {
+      if (!placementMode?.deco) return;
+      pushSnapshot(portfolio.grid);
+      dispatch({ type: 'PLACE_DECORATION', payload: { decorationType: placementMode.deco, col, row, projectId, flip: placementMode.flip } });
+    },
+    [placementMode, portfolio.grid, pushSnapshot],
+  );
+  const handleRemoveDecoration = useCallback(
+    (col: number, row: number) => {
+      pushSnapshot(portfolio.grid);
+      dispatch({ type: 'REMOVE_DECORATION', payload: { col, row } });
+    },
+    [portfolio.grid, pushSnapshot],
+  );
+
+  // ─── Toolbar handlers (stable across renders so the memoised Toolbar holds) ─
+  const handleSelectItem = useCallback((deco: CellType) => {
+    setPlacementMode({ deco, eraser: false, flip: false });
+  }, []);
+  const handleErase = useCallback(() => {
+    setPlacementMode({ deco: 'tree_sm', eraser: true });
+  }, []);
+  const handleCancelPlacement = useCallback(() => setPlacementMode(null), []);
+  const handleFlip = useCallback(() => {
+    setPlacementMode(prev => prev ? { ...prev, flip: !prev.flip } : prev);
+  }, []);
+
+  // ─── Keyboard shortcuts ────────────────────────────────────────────────────
+  // F → flip · Esc → cancel placement
+  // Cmd+Z / Ctrl+Z → undo (only while in construction/destruction mode, per spec)
+  // Cmd+Shift+Z / Ctrl+Shift+Z → redo (same scope)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
       if ((e.key === 'f' || e.key === 'F') && placementMode && !placementMode.eraser) {
         setPlacementMode(prev => prev ? { ...prev, flip: !prev.flip } : prev);
+        return;
       }
       if (e.key === 'Escape' && placementMode) {
         setPlacementMode(null);
+        return;
+      }
+
+      // Undo / Redo — only when actively building or destroying
+      const cmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (cmdOrCtrl && (e.key === 'z' || e.key === 'Z') && placementMode) {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [placementMode]);
+  }, [placementMode, undo, redo]);
 
   // Auto-save to localStorage
   const { status: saveStatus } = useAutoSave(slug, portfolio);
@@ -139,18 +198,10 @@ function GameScreen({
         cityState={cityState}
         focusRequest={focusRequest}
         onTargetClick={setActiveTarget}
-        onMoveStructure={(entityId, structureType, toCol, toRow, width, height) =>
-          dispatch({ type: 'MOVE_STRUCTURE', payload: { entityId, structureType: structureType as any, toCol, toRow, width, height } })
-        }
+        onMoveStructure={handleMoveStructure}
         placementMode={placementMode}
-        onPlaceDecoration={(col, row, projectId) => {
-          if (placementMode?.deco) {
-            dispatch({ type: 'PLACE_DECORATION', payload: { decorationType: placementMode.deco, col, row, projectId, flip: placementMode.flip } });
-          }
-        }}
-        onRemoveDecoration={(col, row) => {
-          dispatch({ type: 'REMOVE_DECORATION', payload: { col, row } });
-        }}
+        onPlaceDecoration={handlePlaceDecoration}
+        onRemoveDecoration={handleRemoveDecoration}
       />
 
       {/* Top-center HUD bandeau: city card + weather + Argent/Météo/Annuaire drawers */}
@@ -201,10 +252,14 @@ function GameScreen({
 
       <Toolbar
         placementMode={placementMode}
-        onSelectItem={(deco) => setPlacementMode({ deco, eraser: false, flip: false })}
-        onErase={() => setPlacementMode({ deco: 'tree_sm', eraser: true })}
-        onCancel={() => setPlacementMode(null)}
-        onFlip={() => setPlacementMode(prev => prev ? { ...prev, flip: !prev.flip } : prev)}
+        onSelectItem={handleSelectItem}
+        onErase={handleErase}
+        onCancel={handleCancelPlacement}
+        onFlip={handleFlip}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
       />
 
       {/* Save indicator (kept top-right per Lot 1 spec) */}

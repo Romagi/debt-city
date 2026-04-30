@@ -34,7 +34,10 @@ type Action =
   | { type: 'MOVE_STRUCTURE'; payload: { entityId: string; structureType: CellType; toCol: number; toRow: number; width: number; height: number } }
   | { type: 'SYNC_GRID'; payload: { grid: import('../types/portfolio').GridState } }
   | { type: 'PLACE_DECORATION'; payload: { decorationType: CellType; col: number; row: number; projectId: string; flip?: boolean } }
-  | { type: 'REMOVE_DECORATION'; payload: { col: number; row: number } };
+  | { type: 'REMOVE_DECORATION'; payload: { col: number; row: number } }
+  /** Undo/redo restore — overwrite the grid with a previously captured snapshot.
+   *  Issued by the useUndoStack hook on Cmd+Z / Cmd+Shift+Z. */
+  | { type: 'RESTORE_GRID'; payload: { grid: import('../types/portfolio').GridState } };
 
 export type PortfolioAction = Action;
 
@@ -669,6 +672,13 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       if (!origin || !DECORATION_TYPES.has(origin.type) || !origin.entityId) return state;
       const newGrid = removeFromGrid(state.grid, origin.entityId, origin.type);
       return { ...state, grid: newGrid };
+    }
+
+    case 'RESTORE_GRID': {
+      // Issued only by the undo/redo hook. Replaces the current grid with a
+      // previously captured snapshot. The snapshot already has fencesPlaced=true
+      // on its districts, so SYNC_GRID won't re-place fences after restore.
+      return { ...state, grid: action.payload.grid };
     }
 
     default:
