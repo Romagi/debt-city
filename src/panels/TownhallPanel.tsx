@@ -194,7 +194,7 @@ export default function TownhallPanel({ building, dispatch, onClose, onOpenModal
 const actionBtnBase: React.CSSProperties = {
   padding: '2px 6px',
   fontSize: 9,
-  fontFamily: 'monospace',
+  fontFamily: 'Quicksand, system-ui, sans-serif',
   border: '1px solid rgba(255,255,255,0.15)',
   borderRadius: 3,
   background: 'rgba(255,255,255,0.06)',
@@ -206,7 +206,7 @@ const actionBtnBase: React.CSSProperties = {
 };
 
 const S: Record<string, React.CSSProperties> = {
-  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(15, 20, 30, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'monospace', fontSize: 13, zIndex: 20 },
+  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   panelType: { color: '#A88A74', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   title: { margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 },
@@ -217,13 +217,13 @@ const S: Record<string, React.CSSProperties> = {
   statValue: { fontSize: 16, fontWeight: 700 },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 },
   sectionTitle: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: '#888', margin: 0 },
-  addBtn: { background: 'none', border: '1px solid rgba(168,138,116,0.4)', borderRadius: 4, color: '#A88A74', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'monospace' },
+  addBtn: { background: 'none', border: '1px solid rgba(168,138,116,0.4)', borderRadius: 4, color: '#A88A74', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'Quicksand, system-ui, sans-serif' },
   list: { display: 'flex', flexDirection: 'column', gap: 8 },
   listItem: { padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 },
   listItemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   listItemName: { fontWeight: 700, fontSize: 13 },
   listItemMeta: { color: '#777', fontSize: 10, textTransform: 'capitalize' },
-  smallBtn: { background: 'none', border: 'none', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 0', fontFamily: 'monospace', textDecoration: 'underline' },
+  smallBtn: { background: 'none', border: 'none', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 0', fontFamily: 'Quicksand, system-ui, sans-serif', textDecoration: 'underline' },
   termRow: { display: 'flex', flexDirection: 'column', gap: 6 },
   termItem: { display: 'flex', flexDirection: 'column', gap: 3 },
   termChip: { display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' },

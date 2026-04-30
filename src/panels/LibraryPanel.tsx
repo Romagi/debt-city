@@ -85,7 +85,7 @@ export default function LibraryPanel({ building, dispatch, onClose, onOpenModal 
 }
 
 const S: Record<string, React.CSSProperties> = {
-  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(15, 20, 30, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'monospace', fontSize: 13, zIndex: 20 },
+  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   panelType: { color: '#72A6A6', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   title: { margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 },
@@ -94,7 +94,7 @@ const S: Record<string, React.CSSProperties> = {
   statLabel: { color: '#888', fontSize: 10, textTransform: 'uppercase', marginBottom: 2 },
   statValue: { fontSize: 16, fontWeight: 700 },
   sectionHeader: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
-  addBtn: { background: 'none', border: '1px solid rgba(114,166,166,0.4)', borderRadius: 4, color: '#72A6A6', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'monospace' },
+  addBtn: { background: 'none', border: '1px solid rgba(114,166,166,0.4)', borderRadius: 4, color: '#72A6A6', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'Quicksand, system-ui, sans-serif' },
   sectionTitle: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: '#888', margin: '16px 0 8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 },
   list: { display: 'flex', flexDirection: 'column', gap: 4 },
   listItem: { padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 },

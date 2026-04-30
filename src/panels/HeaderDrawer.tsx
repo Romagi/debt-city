@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { tokens } from '../styles/tokens';
 
 interface Props {
   /** Approximate left X (in px) of the trigger button — used to position the arrow */
@@ -48,9 +49,9 @@ export default function HeaderDrawer({ arrowAtX, width = 360, onClose, children 
         transform: `translateX(calc(-50% + ${arrowAtX}px))`,
         width: 14,
         height: 14,
-        background: 'rgba(15, 20, 35, 0.95)',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
-        borderLeft: '1px solid rgba(255,255,255,0.08)',
+        background: tokens.color.surface,
+        borderTop: `1px solid ${tokens.color.border}`,
+        borderLeft: `1px solid ${tokens.color.border}`,
         rotate: '45deg',
       }
     : null;
@@ -80,16 +81,16 @@ const styles: Record<string, React.CSSProperties> = {
     top: 84,
     left: '50%',
     transform: 'translateX(-50%)',
-    background: 'rgba(15, 20, 35, 0.95)',
-    backdropFilter: 'blur(16px)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 16,
-    padding: 18,
-    color: '#DDD',
-    fontFamily: 'monospace',
-    fontSize: 12,
-    boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
-    zIndex: 30,
+    background: tokens.color.surface,
+    backdropFilter: tokens.blur.strong,
+    border: `1px solid ${tokens.color.border}`,
+    borderRadius: tokens.radius.xl,
+    padding: 20,
+    color: tokens.color.text,
+    fontFamily: tokens.font.family,
+    fontSize: tokens.font.size.sm,
+    boxShadow: tokens.shadow.xl,
+    zIndex: tokens.z.drawer,
     maxHeight: 'calc(100vh - 120px)',
     overflowY: 'auto',
   },

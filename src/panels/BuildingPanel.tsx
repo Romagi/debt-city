@@ -104,7 +104,7 @@ export default function BuildingPanel({ building, dispatch, onClose, onOpenModal
 }
 
 const S: Record<string, React.CSSProperties> = {
-  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(15, 20, 30, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'monospace', fontSize: 13, zIndex: 20 },
+  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   panelType: { color: '#6AB0F0', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   title: { margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 },
@@ -117,7 +117,7 @@ const S: Record<string, React.CSSProperties> = {
   statValue: { fontSize: 13, fontWeight: 600 },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 },
   sectionTitle: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: '#888', margin: 0 },
-  addBtn: { background: 'none', border: '1px solid rgba(74,144,217,0.4)', borderRadius: 4, color: '#6AB0F0', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'monospace' },
+  addBtn: { background: 'none', border: '1px solid rgba(74,144,217,0.4)', borderRadius: 4, color: '#6AB0F0', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'Quicksand, system-ui, sans-serif' },
   list: { display: 'flex', flexDirection: 'column', gap: 6 },
   listItem: { padding: '8px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 },
   listItemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -125,7 +125,7 @@ const S: Record<string, React.CSSProperties> = {
   listItemValue: { color: '#6AB0F0', fontWeight: 600 },
   listItemMeta: { color: '#777', fontSize: 11, marginTop: 2 },
   itemActions: { display: 'flex', gap: 8, marginTop: 6 },
-  smallBtn: { background: 'none', border: 'none', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 0', fontFamily: 'monospace', textDecoration: 'underline' },
+  smallBtn: { background: 'none', border: 'none', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 0', fontFamily: 'Quicksand, system-ui, sans-serif', textDecoration: 'underline' },
   empty: { color: '#555', fontSize: 11, fontStyle: 'italic', padding: '8px 0' },
-  workflowBtn: { padding: '3px 10px', fontSize: 9, fontFamily: 'monospace', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, border: '1px solid', borderRadius: 4, background: 'rgba(255,255,255,0.04)', cursor: 'pointer' },
+  workflowBtn: { padding: '3px 10px', fontSize: 9, fontFamily: 'Quicksand, system-ui, sans-serif', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, border: '1px solid', borderRadius: 4, background: 'rgba(255,255,255,0.04)', cursor: 'pointer' },
 };

@@ -22,6 +22,7 @@ import { buildCityState } from './city/utils';
 import { useAutoSave } from './storage/useAutoSave';
 import type { Portfolio, ClickTarget, Borrower, Project, Tranche, Lender, Covenant, CellType } from './types/portfolio';
 import type { PlacementMode } from './city/CityCanvas';
+import { tokens } from './styles/tokens';
 
 // ─── Modal state ───
 
@@ -284,7 +285,14 @@ function GameScreen({
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  app: { position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#0A0F19' },
+  app: {
+    position: 'relative',
+    width: '100vw',
+    height: '100vh',
+    overflow: 'hidden',
+    background: tokens.color.bg,
+    fontFamily: tokens.font.family,
+  },
   saveBar: {
     position: 'absolute',
     top: 28,
@@ -295,13 +303,14 @@ const styles: Record<string, React.CSSProperties> = {
     pointerEvents: 'none',
   },
   saveStatus: {
-    color: '#778',
-    fontFamily: 'monospace',
-    fontSize: 11,
-    background: 'rgba(15, 20, 35, 0.7)',
-    padding: '4px 10px',
-    borderRadius: 999,
-    border: '1px solid rgba(255,255,255,0.06)',
-    backdropFilter: 'blur(8px)',
+    color: tokens.color.textDim,
+    fontFamily: tokens.font.family,
+    fontSize: tokens.font.size.xs,
+    fontWeight: tokens.font.weight.semibold,
+    background: tokens.color.surface,
+    padding: '5px 12px',
+    borderRadius: tokens.radius.pill,
+    border: `1px solid ${tokens.color.border}`,
+    backdropFilter: tokens.blur.soft,
   },
 };
