@@ -410,6 +410,9 @@ export interface DistrictBounds {
   col: number; // top-left grid col
   row: number; // top-left grid row
   size: number; // always DISTRICT_SIZE (20)
+  /** Set to true after the first call to placeFencesForDistrict.
+   *  Prevents SYNC_GRID from re-placing fences that the user explicitly deleted. */
+  fencesPlaced?: boolean;
 }
 
 /** Per-cell fence overlay — independent of the main cells grid.

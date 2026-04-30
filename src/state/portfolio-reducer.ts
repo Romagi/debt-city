@@ -107,6 +107,11 @@ function getOverlay(grid: GridState): (FenceOverlayCell | null)[][] {
  *  Z-order: the rendering loop draws r ascending, so E fences (row=dr…) are
  *  drawn AFTER N fences (row=dr-1) → E appears in front at the NE corner. ✓ */
 function placeFencesForDistrict(grid: GridState, district: DistrictBounds): GridState {
+  // Skip if already initialized — the user may have deleted some fences and we must
+  // respect that choice. fencesPlaced is persisted in the saved portfolio, so it
+  // survives quit/reload.
+  if (district.fencesPlaced) return grid;
+
   const { col: dc, row: dr, size } = district;
   const overlay = getOverlay(grid).map(r => [...r]) as (FenceOverlayCell | null)[][];
 
@@ -124,7 +129,12 @@ function placeFencesForDistrict(grid: GridState, district: DistrictBounds): Grid
   // N boundary → fence2_s on the row just outside the top edge
   for (let c = dc; c < dc + size; c++) set(c, dr - 1,        { fence2_s: true });
 
-  return { ...grid, fenceOverlay: overlay };
+  // Mark this district so future SYNC_GRID calls don't overwrite user changes
+  const updatedDistricts = grid.districts.map(d =>
+    d.projectId === district.projectId ? { ...d, fencesPlaced: true } : d
+  );
+
+  return { ...grid, fenceOverlay: overlay, districts: updatedDistricts };
 }
 
 /** Place roads in the gap column (dc-1) and gap row (dr-1) of a district.
