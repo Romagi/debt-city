@@ -91,6 +91,8 @@ function GameScreen({
   );
   const handleAddDeal     = useCallback(() => setModal({ type: 'deal' }),     []);
   const handleAddBorrower = useCallback(() => setModal({ type: 'borrower' }), []);
+  // Stable handler for contextual panels (memoised) — keeps the React.memo effective
+  const handleClosePanel  = useCallback(() => setActiveTarget(null),          []);
 
   // ─── Undo/Redo for construction actions ────────────────────────────────────
   // We push a snapshot of the grid BEFORE each PLACE_DECORATION / REMOVE_DECORATION
@@ -222,7 +224,7 @@ function GameScreen({
         <BuildingPanel
           building={syncedTarget.building}
           dispatch={dispatch}
-          onClose={() => setActiveTarget(null)}
+          onClose={handleClosePanel}
           onOpenModal={setModal}
         />
       )}
@@ -230,7 +232,7 @@ function GameScreen({
         <TownhallPanel
           building={syncedTarget.building}
           dispatch={dispatch}
-          onClose={() => setActiveTarget(null)}
+          onClose={handleClosePanel}
           onOpenModal={setModal}
         />
       )}
@@ -238,7 +240,7 @@ function GameScreen({
         <ShopPanel
           building={syncedTarget.building}
           dispatch={dispatch}
-          onClose={() => setActiveTarget(null)}
+          onClose={handleClosePanel}
           onOpenModal={setModal}
         />
       )}
@@ -246,7 +248,7 @@ function GameScreen({
         <LibraryPanel
           building={syncedTarget.building}
           dispatch={dispatch}
-          onClose={() => setActiveTarget(null)}
+          onClose={handleClosePanel}
           onOpenModal={setModal}
         />
       )}

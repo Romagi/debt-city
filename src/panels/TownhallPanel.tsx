@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CityBuilding, Covenant, TermStatus } from '../types/portfolio';
 import { TERM_ACTIONS } from '../types/portfolio';
 import type { PortfolioAction } from '../state/portfolio-reducer';
@@ -27,7 +28,7 @@ interface Props {
   onOpenModal: ModalOpener;
 }
 
-export default function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
+function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project, trafficLight, alertLevel } = building;
   const covenants = project.covenants;
   const tb = TRAFFIC_BADGES[trafficLight] ?? TRAFFIC_BADGES.grey;
@@ -204,6 +205,8 @@ const actionBtnBase: React.CSSProperties = {
   fontWeight: 700,
   letterSpacing: 0.3,
 };
+
+export default memo(TownhallPanel);
 
 const S: Record<string, React.CSSProperties> = {
   panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },

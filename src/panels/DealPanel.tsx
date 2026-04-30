@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CityBuilding, Borrower, Project, Tranche, Lender } from '../types/portfolio';
 import type { PortfolioAction } from '../state/portfolio-reducer';
 import { formatMoney } from '../city/utils';
@@ -35,7 +36,7 @@ const TERM_STATUS_COLORS: Record<string, string> = {
   deactivated: '#666',
 };
 
-export default function DealPanel({ building, dispatch, onClose, onOpenModal }: Props) {
+function DealPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project } = building;
   const badge = STATUS_BADGES[project.currentStatus] ?? STATUS_BADGES.draft;
 
@@ -193,6 +194,8 @@ export default function DealPanel({ building, dispatch, onClose, onOpenModal }: 
     </div>
   );
 }
+
+export default memo(DealPanel);
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {

@@ -568,14 +568,27 @@ export function fitsInDistrict(district: DistrictBounds, col: number, row: numbe
   return col >= district.col && row >= district.row && col + w <= district.col + district.size && row + h <= district.row + district.size;
 }
 
-/** Allocate a new district slot on the grid */
+/** Allocate a new district slot on the grid.
+ *  Picks the lowest-index free slot so that slots freed by deleted projects get
+ *  reused before the city expands further south/east. */
 export function allocateDistrict(grid: GridState, projectId: string): DistrictBounds {
-  const index = grid.districts.length;
+  const stride = DISTRICT_SIZE + DISTRICT_GAP;
+  const used = new Set<number>();
+  for (const d of grid.districts) {
+    const slotCol = Math.round(d.col / stride);
+    const slotRow = Math.round(d.row / stride);
+    used.add(slotRow * DISTRICT_COLS + slotCol);
+  }
+  let index = 0;
+  while (used.has(index)) index++;
   const slotCol = index % DISTRICT_COLS;
   const slotRow = Math.floor(index / DISTRICT_COLS);
-  const col = slotCol * (DISTRICT_SIZE + DISTRICT_GAP);
-  const row = slotRow * (DISTRICT_SIZE + DISTRICT_GAP);
-  return { projectId, col, row, size: DISTRICT_SIZE };
+  return {
+    projectId,
+    col: slotCol * stride,
+    row: slotRow * stride,
+    size: DISTRICT_SIZE,
+  };
 }
 
 /** Remove fence cells from a rectangular area (fences are permeable to roads and buildings) */

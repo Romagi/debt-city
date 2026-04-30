@@ -128,21 +128,40 @@ function getShopSizeKey(lenderCount: number): string {
 // Library is now a single model (library_md, 2×2) — no size variants.
 const LIBRARY_SPRITE_KEY = 'library_md';
 
-function findStructureOnGrid(grid: GridState, entityId: string, type: string): { col: number; row: number } | null {
+/** Build a fast lookup map from a single full grid scan: O(grid.size²) once instead
+ *  of O(grid.size² × N × 7) in the old buildCityState (one scan per find call,
+ *  per project, per structure type).  Keys are `${entityId}|${type}` and values
+ *  point to the origin cell's (col, row).
+ *  Used by buildCityState. */
+function buildStructureIndex(grid: GridState): Map<string, { col: number; row: number }> {
+  const index = new Map<string, { col: number; row: number }>();
   for (let r = 0; r < grid.size; r++) {
+    const rowCells = grid.cells[r];
+    if (!rowCells) continue;
     for (let c = 0; c < grid.size; c++) {
-      const cell = grid.cells[r]?.[c];
-      if (cell?.entityId === entityId && cell.type === type && !cell.originCol && !cell.originRow) {
-        return { col: c, row: r };
-      }
+      const cell = rowCells[c];
+      if (!cell || !cell.entityId) continue;
+      // Origin cells only — non-origin cells of multi-tile structures carry
+      // originCol/originRow back-pointers (== null check is safer than `!` since
+      // 0 is a legitimate column/row).
+      if (cell.originCol != null || cell.originRow != null) continue;
+      index.set(`${cell.entityId}|${cell.type}`, { col: c, row: r });
     }
   }
-  return null;
+  return index;
 }
+
+const indexKey = (entityId: string, type: string): string => `${entityId}|${type}`;
 
 export function buildCityState(portfolio: Portfolio): CityState {
   const districts: CityDistrict[] = [];
   let grid = portfolio.grid ?? createEmptyGrid(GRID_SIZE);
+
+  // PERF — single grid scan to index every existing structure by (entityId, type).
+  // The old code called findStructureOnGrid 7× per project, each O(grid.size²) →
+  // catastrophic with 20+ deals. Now we pay one scan + O(1) lookups.
+  // The map is mutated inline as we place new structures (cheaper than rebuilding).
+  const structureIndex = buildStructureIndex(grid);
 
   const sortedProjects = [...portfolio.projects].sort((a, b) => {
     const statusOrder: Record<string, number> = { published: 0, draft: 1, archived: 2, finished: 3 };
@@ -165,8 +184,8 @@ export function buildCityState(portfolio: Portfolio): CityState {
     }
     const d = district;
 
-    // Check if building already placed on grid
-    const existingBuildingPos = findStructureOnGrid(grid, project.id, 'building');
+    // Check if building already placed on grid (O(1) lookup, was O(grid²))
+    const existingBuildingPos = structureIndex.get(indexKey(project.id, 'building'));
     const bSizeKey = getBuildingSizeKey(amount);
     const [bw, bh] = STRUCTURE_SIZES[bSizeKey] ?? [2, 2];
     let bCol: number, bRow: number;
@@ -181,45 +200,49 @@ export function buildCityState(portfolio: Portfolio): CityState {
       bRow = d.row + Math.floor((DISTRICT_SIZE - bh) / 2);
       if (canPlace(grid, bCol, bRow, bw, bh)) {
         grid = placeOnGrid(grid, bCol, bRow, bw, bh, { type: 'building', entityId: project.id, projectId: project.id });
+        structureIndex.set(indexKey(project.id, 'building'), { col: bCol, row: bRow });
       }
     }
 
-    // Auto-place sub-structures ONLY if not already on the grid
-    if (!findStructureOnGrid(grid, project.id, 'townhall')) {
+    // Auto-place sub-structures ONLY if not already on the grid (O(1) lookups)
+    if (!structureIndex.has(indexKey(project.id, 'townhall'))) {
       const [thW, thH] = STRUCTURE_SIZES.townhall ?? [3, 3];
       const thCol = d.col + 1;
       const thRow = bRow + bh + 1;
       if (canPlace(grid, thCol, thRow, thW, thH)) {
         grid = placeOnGrid(grid, thCol, thRow, thW, thH, { type: 'townhall', entityId: project.id, projectId: project.id });
+        structureIndex.set(indexKey(project.id, 'townhall'), { col: thCol, row: thRow });
       }
     }
 
-    if (!findStructureOnGrid(grid, project.id, 'shop')) {
+    if (!structureIndex.has(indexKey(project.id, 'shop'))) {
       const sSizeKey = getShopSizeKey(project.lenders.length);
       const [sW, sH] = STRUCTURE_SIZES[sSizeKey] ?? [2, 2];
       const sCol = bCol + bw + 1;
       const sRow = bRow + 1;
       if (canPlace(grid, sCol, sRow, sW, sH)) {
         grid = placeOnGrid(grid, sCol, sRow, sW, sH, { type: 'shop', entityId: project.id, projectId: project.id });
+        structureIndex.set(indexKey(project.id, 'shop'), { col: sCol, row: sRow });
       }
     }
 
-    if (!findStructureOnGrid(grid, project.id, 'library')) {
+    if (!structureIndex.has(indexKey(project.id, 'library'))) {
       // Single library model: library_md (2×2)
       const [lW, lH] = STRUCTURE_SIZES[LIBRARY_SPRITE_KEY] ?? [2, 2];
       const lCol = d.col + 1;
       const lRow = d.row + 1;
       if (canPlace(grid, lCol, lRow, lW, lH)) {
         grid = placeOnGrid(grid, lCol, lRow, lW, lH, { type: 'library', entityId: project.id, projectId: project.id });
+        structureIndex.set(indexKey(project.id, 'library'), { col: lCol, row: lRow });
       }
     }
 
     // ── Convert grid positions to screen positions (SOUTH-TIP convention) ──
     // South tip of N×M footprint at (col, row) = gridToScreen(col + N - 0.5, row + M - 0.5)
     const { x, y } = gridToScreen(bCol + bw - 0.5, bRow + bh - 0.5);
-    const thPos = findStructureOnGrid(grid, project.id, 'townhall');
-    const sPos  = findStructureOnGrid(grid, project.id, 'shop');
-    const lPos  = findStructureOnGrid(grid, project.id, 'library');
+    const thPos = structureIndex.get(indexKey(project.id, 'townhall'));
+    const sPos  = structureIndex.get(indexKey(project.id, 'shop'));
+    const lPos  = structureIndex.get(indexKey(project.id, 'library'));
 
     // Townhall: 2×2 → south tip = col+1.5, row+1.5
     const thScreen = thPos

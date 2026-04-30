@@ -22,23 +22,25 @@ export function useAutoSave(slug: string | null, portfolio: Portfolio) {
     setStatus('saved');
   }, [slug, portfolio]);
 
-  // Debounced auto-save on portfolio change
+  // Debounced auto-save on portfolio change.
+  // PERF — JSON.stringify is deferred inside the setTimeout. With 50+ deals, the
+  // serialised portfolio is heavy (5-50ms). We don't want to pay that cost on every
+  // dispatch; only when the timer actually fires (after 2s of idle). The reference
+  // change of `portfolio` is enough signal that something *might* have changed —
+  // the in-timer string equality guard catches the rare false positives.
   useEffect(() => {
     if (!slug) return;
 
-    // Skip the initial render (portfolio hasn't changed yet)
-    const json = JSON.stringify(portfolio);
-    if (json === lastSavedRef.current) return;
-
-    // Clear previous timer
     if (timerRef.current) clearTimeout(timerRef.current);
 
     setStatus('saving');
     timerRef.current = setTimeout(() => {
-      savePortfolio(slug, portfolio);
-      lastSavedRef.current = json;
+      const json = JSON.stringify(portfolio);
+      if (json !== lastSavedRef.current) {
+        savePortfolio(slug, portfolio);
+        lastSavedRef.current = json;
+      }
       setStatus('saved');
-
       // Reset to idle after 3s
       setTimeout(() => setStatus('idle'), 3000);
     }, DEBOUNCE_MS);

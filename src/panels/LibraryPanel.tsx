@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CityBuilding, DocumentDrive } from '../types/portfolio';
 import type { PortfolioAction } from '../state/portfolio-reducer';
 
@@ -18,7 +19,7 @@ interface Props {
   onOpenModal: ModalOpener;
 }
 
-export default function LibraryPanel({ building, dispatch, onClose, onOpenModal }: Props) {
+function LibraryPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project } = building;
   const docs = project.documents;
   const driveCount = new Set(docs.map(d => d.drive)).size;
@@ -83,6 +84,8 @@ export default function LibraryPanel({ building, dispatch, onClose, onOpenModal 
     </div>
   );
 }
+
+export default memo(LibraryPanel);
 
 const S: Record<string, React.CSSProperties> = {
   panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CityBuilding, Project, ProjectStatus, Tranche } from '../types/portfolio';
 import { PROJECT_STATUS_ACTIONS } from '../types/portfolio';
 import type { PortfolioAction } from '../state/portfolio-reducer';
@@ -19,7 +20,7 @@ const STATUS_BADGES: Record<string, { bg: string; text: string }> = {
   finished: { bg: '#666', text: '#FFF' },
 };
 
-export default function BuildingPanel({ building, dispatch, onClose, onOpenModal }: Props) {
+function BuildingPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project } = building;
   const badge = STATUS_BADGES[project.currentStatus] ?? STATUS_BADGES.draft;
 
@@ -102,6 +103,8 @@ export default function BuildingPanel({ building, dispatch, onClose, onOpenModal
     </div>
   );
 }
+
+export default memo(BuildingPanel);
 
 const S: Record<string, React.CSSProperties> = {
   panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },

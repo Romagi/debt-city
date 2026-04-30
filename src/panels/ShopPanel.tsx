@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CityBuilding, Lender, Tranche } from '../types/portfolio';
 import { getLenderTotal } from '../types/portfolio';
 import type { PortfolioAction } from '../state/portfolio-reducer';
@@ -28,7 +29,7 @@ const ROLE_BADGES: Record<string, { bg: string; label: string }> = {
   participant: { bg: 'rgba(255,255,255,0.08)', label: 'Participant' },
 };
 
-export default function ShopPanel({ building, dispatch, onClose, onOpenModal }: Props) {
+function ShopPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project, syndicateSize } = building;
   const lenders = project.lenders;
   const totalParticipation = lenders.reduce((s, l) => s + getLenderTotal(l), 0);
@@ -119,6 +120,8 @@ export default function ShopPanel({ building, dispatch, onClose, onOpenModal }: 
     </div>
   );
 }
+
+export default memo(ShopPanel);
 
 const S: Record<string, React.CSSProperties> = {
   panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },

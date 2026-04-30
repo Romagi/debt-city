@@ -173,6 +173,48 @@ function placeGapRoads(grid: GridState, district: DistrictBounds): GridState {
   return g;
 }
 
+/** Wipe everything that belongs to a district being deleted:
+ *   • Cells inside the district bounding box (building, townhall, shop, library, decos)
+ *   • Cells in the district's W-gap column (placed by placeGapRoads for THIS district)
+ *   • Cells in the district's N-gap row + the NW corner cell (same)
+ *   • Fence overlay flags in the same area (boundary fences are owned by this district)
+ *
+ *  The +1 extensions south/east of the gap (e.g. (dc-1, dr+size)) are intentionally
+ *  left alone — those cells are also "claimed" by adjacent districts' gap loops, and
+ *  removing them would punch holes in the neighbours' gap roads. The slight visual
+ *  gap at the deleted district's SE corner is acceptable.
+ */
+function removeDistrict(grid: GridState, district: DistrictBounds): GridState {
+  const { col: dc, row: dr, size } = district;
+
+  /** True iff (c, r) is owned by this district (district body + its W gap col + N gap row). */
+  function isOwned(c: number, r: number): boolean {
+    // Inside the district bounding box
+    if (c >= dc && c < dc + size && r >= dr && r < dr + size) return true;
+    // West gap column at rows aligned with the district
+    if (c === dc - 1 && r >= dr && r < dr + size) return true;
+    // North gap row at cols aligned with the district
+    if (r === dr - 1 && c >= dc && c < dc + size) return true;
+    // NW corner cell (intersection of both gaps)
+    if (c === dc - 1 && r === dr - 1) return true;
+    return false;
+  }
+
+  const newCells = grid.cells.map((rowArr, r) =>
+    rowArr.map((cell, c) => isOwned(c, r) ? null : cell)
+  );
+
+  const newOverlay = grid.fenceOverlay
+    ? grid.fenceOverlay.map((rowArr, r) =>
+        rowArr.map((cell, c) => isOwned(c, r) ? null : cell)
+      )
+    : grid.fenceOverlay;
+
+  const newDistricts = grid.districts.filter(d => d.projectId !== district.projectId);
+
+  return { ...grid, cells: newCells, fenceOverlay: newOverlay, districts: newDistricts };
+}
+
 // ─── Reducer ───
 
 export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
@@ -223,9 +265,15 @@ export function portfolioReducer(state: Portfolio, action: Action): Portfolio {
       });
     }
     case 'DELETE_PROJECT': {
+      const { id } = action.payload;
+      // Free the district slot + clear all cells / fences owned by this project, so the
+      // freed slot is available for a future deal (allocateDistrict reuses lowest free slot).
+      const district = state.grid.districts.find(d => d.projectId === id);
+      const newGrid = district ? removeDistrict(state.grid, district) : state.grid;
       return recomputePortfolio({
         ...state,
-        projects: state.projects.filter(p => p.id !== action.payload.id),
+        grid: newGrid,
+        projects: state.projects.filter(p => p.id !== id),
       });
     }
 

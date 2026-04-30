@@ -435,6 +435,9 @@ interface RenderScene {
 export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration, focusRequest }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
+  // PERF — `forceRender` is intentionally retained for the sprite-load callback
+  // (one-time on mount). Cursor changes no longer trigger React re-renders;
+  // see updateCursor() below.
   const [, forceRender] = useState(0);
   const hoveredTargetRef = useRef<ClickTarget | null>(null);
   /** District being hovered (cursor inside its bounds, no specific structure under the pointer).
@@ -562,6 +565,22 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
   // Load sprites on mount
   useEffect(() => { loadAllSprites().then(() => { needsRedrawRef.current = true; forceRender(n => n + 1); }); }, []);
+
+  /** PERF — update the canvas cursor imperatively, skipping a React re-render.
+   *  Called from mouse handlers when hover/drag state changes, and from the
+   *  effect below when `placementMode` flips. */
+  const updateCursor = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.style.cursor = placementMode
+      ? (placementMode.eraser ? 'crosshair' : 'copy')
+      : dragRef.current.active && dragRef.current.moved ? 'grabbing'
+      : hoveredTargetRef.current ? 'pointer'
+      : 'grab';
+  }, [placementMode]);
+
+  // Sync cursor whenever placementMode changes (mounting + prop updates)
+  useEffect(() => { updateCursor(); }, [updateCursor]);
 
   // Camera focus on a specific district (triggered from CityHeader → DirectoryDrawer)
   useEffect(() => {
@@ -842,21 +861,31 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           drawSpriteOnGrid(ctx, 'picket_fence_2');
           ctx.restore();
           break;
-        case 'library':
+        // Empty-lot placeholders for sub-structures are suppressed for draft and archived
+        // deals — they were visually noisy and felt like leftover stubs. Published / finished
+        // deals still get the construction-sprite hint when a sub-structure is empty so the
+        // user knows where to add docs / covenants / lenders.
+        case 'library': {
+          const status = cmd.building.project.currentStatus;
           if (cmd.building.project.documents.length > 0) drawLibrary(ctx, cmd.building);
-          else drawEmptyLot(ctx, cmd.building.libraryPos, 'construction_2x2');
+          else if (status !== 'draft' && status !== 'archived') drawEmptyLot(ctx, cmd.building.libraryPos, 'construction_2x2');
           break;
-        case 'townhall':
+        }
+        case 'townhall': {
+          const status = cmd.building.project.currentStatus;
           if (cmd.building.project.covenants.length > 0) drawTownhall(ctx, cmd.building);
-          else drawEmptyLot(ctx, cmd.building.townhallPos, 'construction_2x2');
+          else if (status !== 'draft' && status !== 'archived') drawEmptyLot(ctx, cmd.building.townhallPos, 'construction_2x2');
           break;
+        }
         case 'mainBuilding':
           drawBuilding(ctx, cmd.building);
           break;
-        case 'shop':
+        case 'shop': {
+          const status = cmd.building.project.currentStatus;
           if (cmd.building.syndicateSize !== 'none') drawShop(ctx, cmd.building);
-          else drawEmptyLot(ctx, cmd.building.shopPos, 'construction_1x1');
+          else if (status !== 'draft' && status !== 'archived') drawEmptyLot(ctx, cmd.building.shopPos, 'construction_1x1');
           break;
+        }
       }
     }
   }
@@ -1469,7 +1498,10 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     if (drag.active) {
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
-      if (!drag.moved && Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) drag.moved = true;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) {
+        drag.moved = true;
+        updateCursor(); // becomes 'grabbing' once a real drag starts
+      }
       if (drag.moved && dragStateRef.current) {
         // Building drag mode — track grid cell, don't pan camera
         const canvas = canvasRef.current;
@@ -1517,7 +1549,8 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       if (prevId !== nextId) {
         hoveredTargetRef.current = target;
         needsRedrawRef.current = true;
-        forceRender(n => n + 1); // Update cursor style
+        // Imperative cursor update — no React re-render needed.
+        updateCursor();
       }
       // Track hovered grid cell + hovered district (for the hover-only district tooltip)
       const canvas = canvasRef.current;
@@ -1613,6 +1646,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     dragStateRef.current = null;
     dragRef.current = { ...drag, active: false };
     needsRedrawRef.current = true;
+    updateCursor();
   }
 
   function handleWheel(e: React.WheelEvent) {
@@ -1640,12 +1674,19 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     return () => ro.disconnect();
   }, []);
 
-  // ─── Conditional RAF loop (PERF) ───
+  // ─── Stable rAF loop (PERF) ───
   //
-  // The canvas is now fully event-driven: it only redraws when something
-  // explicitly sets `needsRedrawRef.current = true` (user action, state change,
-  // focus animation tick, etc.). When idle, the loop keeps rAF alive but skips
-  // the draw entirely — near-zero CPU cost.
+  // The canvas is event-driven: it only redraws when something explicitly sets
+  // `needsRedrawRef.current = true` (user action, state change, focus tick, …).
+  // When idle, rAF keeps running but skips the draw entirely — near-zero CPU.
+  //
+  // The `draw` callback's identity changes whenever cityState / sortedDistricts /
+  // placementMode change. To avoid tearing down the rAF loop on every dispatch,
+  // we keep `draw` in a ref and read from it inside `render()`. The effect now
+  // mounts ONCE per CityCanvas lifetime.
+  const drawRef = useRef(draw);
+  useEffect(() => { drawRef.current = draw; }, [draw]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1658,7 +1699,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
         const dpr = window.devicePixelRatio || 1;
         const { w, h } = canvasSizeRef.current;
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-        draw(ctx!, w, h);
+        drawRef.current(ctx!, w, h);
         needsRedrawRef.current = false;
       }
       id = requestAnimationFrame(render);
@@ -1666,7 +1707,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     needsRedrawRef.current = true;
     render();
     return () => cancelAnimationFrame(id);
-  }, [draw]);
+  }, []);
 
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
@@ -1684,18 +1725,15 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     }
   }
 
-  const cursorStyle = placementMode
-    ? (placementMode.eraser ? 'crosshair' : 'copy')
-    : dragRef.current.active && dragRef.current.moved ? 'grabbing' : hoveredTargetRef.current ? 'pointer' : 'grab';
-
+  // Cursor is now set imperatively in updateCursor() — no JSX cursor style needed.
   return (
     <canvas
       ref={canvasRef}
-      style={{ width: '100%', height: '100%', cursor: cursorStyle }}
+      style={{ width: '100%', height: '100%' }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={() => { dragRef.current = { ...dragRef.current, active: false }; hoveredTargetRef.current = null; hoveredDistrictRef.current = null; needsRedrawRef.current = true; }}
+      onMouseLeave={() => { dragRef.current = { ...dragRef.current, active: false }; hoveredTargetRef.current = null; hoveredDistrictRef.current = null; needsRedrawRef.current = true; updateCursor(); }}
       onWheel={handleWheel}
       onContextMenu={handleContextMenu}
     />
