@@ -339,6 +339,9 @@ interface Props {
   placementMode?: PlacementMode | null;
   onPlaceDecoration?: (col: number, row: number, projectId: string) => void;
   onRemoveDecoration?: (col: number, row: number) => void;
+  /** Request to animate the camera onto a specific district.
+   *  Bumping `ts` re-triggers the animation even if `projectId` is the same. */
+  focusRequest?: { projectId: string; ts: number } | null;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -403,7 +406,7 @@ const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
   bush:    'bush',
 };
 
-export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration }: Props) {
+export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration, focusRequest }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   const [, forceRender] = useState(0);
@@ -416,6 +419,15 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
   const dragStateRef = useRef<DragState | null>(null);
   // Paint mode: continuous road placement while mouse button is held
   const paintedCellsRef = useRef(new Set<string>());
+
+  /** Camera-focus + district-highlight animation state. Set by the focusRequest effect.
+   *  Total duration = CAM_DUR (camera pan) + HIGHLIGHT_DUR (pulsing diamond outline). */
+  const focusAnimRef = useRef<{
+    projectId: string;
+    startTs: number;
+    fromCam: { x: number; y: number };
+    toCam:   { x: number; y: number };
+  } | null>(null);
 
   // Fix 3 — Pre-sort districts (memoized, not per-frame)
   const sortedDistricts = useMemo(
@@ -434,6 +446,56 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
   // Load sprites on mount
   useEffect(() => { loadAllSprites().then(() => { needsRedrawRef.current = true; forceRender(n => n + 1); }); }, []);
+
+  // Camera focus on a specific district (triggered from CityHeader → DirectoryDrawer)
+  useEffect(() => {
+    if (!focusRequest) return;
+    const district = cityState.grid.districts.find(d => d.projectId === focusRequest.projectId);
+    if (!district) return;
+
+    // Target world position = visual centre of the district diamond
+    const center = gridToScreen(district.col + district.size / 2, district.row + district.size / 2);
+    const cam = cameraRef.current;
+    // We want this world point to land at the canvas anchor (width/2, height*0.35).
+    // After scale by zoom, point lands at (width/2 + cam.x + center.x*zoom, …) →
+    // setting cam.x = -center.x * zoom puts it back at width/2.
+    const toCam = { x: -center.x * cam.zoom, y: -center.y * cam.zoom };
+
+    focusAnimRef.current = {
+      projectId: focusRequest.projectId,
+      startTs: performance.now(),
+      fromCam: { x: cam.x, y: cam.y },
+      toCam,
+    };
+
+    const CAM_DUR = 400;       // ms — camera pan
+    const HIGHLIGHT_DUR = 1500; // ms — pulsing diamond afterwards
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const tick = () => {
+      const anim = focusAnimRef.current;
+      if (!anim) return;
+      const elapsed = performance.now() - anim.startTs;
+      // Phase 1: camera lerp
+      if (elapsed < CAM_DUR) {
+        const e = easeOutCubic(elapsed / CAM_DUR);
+        cameraRef.current.x = anim.fromCam.x + (anim.toCam.x - anim.fromCam.x) * e;
+        cameraRef.current.y = anim.fromCam.y + (anim.toCam.y - anim.fromCam.y) * e;
+      } else {
+        cameraRef.current.x = anim.toCam.x;
+        cameraRef.current.y = anim.toCam.y;
+      }
+      needsRedrawRef.current = true;
+      // Phase 2: keep alive for highlight pulse
+      if (elapsed < CAM_DUR + HIGHLIGHT_DUR) {
+        requestAnimationFrame(tick);
+      } else {
+        focusAnimRef.current = null;
+        needsRedrawRef.current = true;
+      }
+    };
+    requestAnimationFrame(tick);
+  }, [focusRequest, cityState.grid.districts]);
 
 
   // ─── Drawing ───
@@ -472,13 +534,57 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     // District labels (always on top of everything)
     for (const district of sortedDistricts) drawDistrictLabel(ctx, district);
 
+    // Focus highlight (pulsing diamond outline around the focused district)
+    drawFocusHighlight(ctx);
+
     // Tooltip — read from ref
     const hovered = hoveredTargetRef.current;
     if (hovered) drawTooltip(ctx, hovered);
 
     ctx.restore();
-    drawHUD(ctx, width);
+    // HUD intentionally removed — all of it (title, legend, weather) lives in <CityHeader/>
   }, [cityState, sortedDistricts, placementMode]);
+
+  /** Pulsing diamond outline drawn around the focused district while the focus
+   *  animation is running. Phase-aware: camera pan = no pulse, highlight = pulse. */
+  function drawFocusHighlight(ctx: CanvasRenderingContext2D) {
+    const anim = focusAnimRef.current;
+    if (!anim) return;
+    const district = cityState.grid.districts.find(d => d.projectId === anim.projectId);
+    if (!district) return;
+
+    const elapsed = performance.now() - anim.startTs;
+    const CAM_DUR = 400;
+    const HIGHLIGHT_DUR = 1500;
+    if (elapsed > CAM_DUR + HIGHLIGHT_DUR) return;
+    // After camera pan, fade out from full opacity to 0 with a sine pulse on top
+    const tHL = Math.max(0, elapsed - CAM_DUR) / HIGHLIGHT_DUR; // 0..1
+    const baseFade = 1 - tHL;                 // linear fade
+    const pulse = 0.5 + 0.5 * Math.sin(elapsed / 90); // 0..1
+    const alpha = baseFade * (0.55 + 0.35 * pulse);
+
+    const { col, row, size } = district;
+    // Iso diamond corners of an N×N block at (col, row)
+    const tw = ISO_TILE_W, th = ISO_TILE_H;
+    const nTip = gridToScreen(col, row);                       nTip.y -= th / 2;
+    const eTip = gridToScreen(col + size - 1, row);            eTip.x += tw / 2;
+    const sTip = gridToScreen(col + size - 1, row + size - 1); sTip.y += th / 2;
+    const wTip = gridToScreen(col, row + size - 1);            wTip.x -= tw / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(nTip.x, nTip.y);
+    ctx.lineTo(eTip.x, eTip.y);
+    ctx.lineTo(sTip.x, sTip.y);
+    ctx.lineTo(wTip.x, wTip.y);
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(106, 176, 240, ${alpha})`;
+    ctx.lineWidth = 4;
+    ctx.shadowColor = `rgba(106, 176, 240, ${alpha * 0.8})`;
+    ctx.shadowBlur = 16;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   function drawGrid(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
     const hCell = hoveredCellRef.current;
@@ -1180,34 +1286,7 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
   // ─── HUD ───
 
-  function drawHUD(ctx: CanvasRenderingContext2D, canvasWidth: number) {
-    ctx.font = '24px serif';
-    const weatherIcon = { sunny: '\u2600\uFE0F', cloudy: '\u2601\uFE0F', stormy: '\u26C8\uFE0F' }[cityState.weather] ?? '';
-    ctx.fillText(weatherIcon, 16, 36);
-
-    ctx.fillStyle = '#FFF'; ctx.font = 'bold 13px monospace';
-    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 3;
-    ctx.fillText(`DEBT CITY \u00B7 ${cityState.districts.length} deals`, 48, 32);
-    ctx.font = '11px monospace'; ctx.fillStyle = '#AAA';
-    ctx.fillText('Scroll to zoom \u00B7 Drag to pan \u00B7 Click a structure', 48, 48);
-    ctx.shadowBlur = 0;
-
-    const legendX = canvasWidth - 200;
-    ctx.font = '10px monospace';
-    const legend = [
-      { color: BUILDING_COLORS.real_estate.base, label: 'Building (Tranches)' },
-      { color: TOWNHALL_COLORS.base, label: 'Mairie (Covenants)' },
-      { color: SHOP_COLORS.base, label: 'Shop (Syndicate)' },
-      { color: LIBRARY_COLORS.base, label: 'Library (Dataroom)' },
-    ];
-    legend.forEach((item, i) => {
-      ctx.fillStyle = item.color;
-      ctx.fillRect(legendX, 18 + i * 18, 10, 10);
-      ctx.fillStyle = '#FFF'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 2;
-      ctx.fillText(item.label, legendX + 16, 26 + i * 18);
-    });
-    ctx.shadowBlur = 0;
-  }
+  // drawHUD removed \u2014 title, legend, and weather icon are now rendered by <CityHeader/> in React.
 
   // ─── Hit testing — grid-based ───
 

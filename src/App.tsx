@@ -4,7 +4,7 @@ import BuildingPanel from './panels/BuildingPanel';
 import TownhallPanel from './panels/TownhallPanel';
 import ShopPanel from './panels/ShopPanel';
 import LibraryPanel from './panels/LibraryPanel';
-import PortfolioOverview from './panels/PortfolioOverview';
+import CityHeader from './panels/CityHeader';
 import BorrowerModal from './modals/BorrowerModal';
 import DealModal from './modals/DealModal';
 import TrancheModal from './modals/TrancheModal';
@@ -48,16 +48,37 @@ export default function App() {
     );
   }
 
-  return <GameScreen slug={session.slug} initialPortfolio={session.initial} onQuit={() => setSession(null)} />;
+  // `key` on GameScreen forces a clean remount when the user switches cities.
+  return (
+    <GameScreen
+      key={session.slug}
+      slug={session.slug}
+      initialPortfolio={session.initial}
+      onQuit={() => setSession(null)}
+      onSwitchCity={(slug, portfolio) => setSession({ slug, initial: portfolio })}
+    />
+  );
 }
 
 // ─── Game screen (split to allow useReducer with dynamic initial state) ───
 
-function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialPortfolio: Portfolio; onQuit: () => void }) {
+function GameScreen({
+  slug,
+  initialPortfolio,
+  onQuit,
+  onSwitchCity,
+}: {
+  slug: string;
+  initialPortfolio: Portfolio;
+  onQuit: () => void;
+  onSwitchCity: (slug: string, portfolio: Portfolio) => void;
+}) {
   const [portfolio, dispatch] = useReducer(portfolioReducer, initialPortfolio);
   const [activeTarget, setActiveTarget] = useState<ClickTarget | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [placementMode, setPlacementMode] = useState<PlacementMode | null>(null);
+  /** Bumping `ts` re-triggers the camera focus animation in CityCanvas, even on the same projectId. */
+  const [focusRequest, setFocusRequest] = useState<{ projectId: string; ts: number } | null>(null);
 
   // F key → toggle flip while placing a decoration
   useEffect(() => {
@@ -106,6 +127,7 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
     <div style={styles.app}>
       <CityCanvas
         cityState={cityState}
+        focusRequest={focusRequest}
         onTargetClick={setActiveTarget}
         onMoveStructure={(entityId, structureType, toCol, toRow, width, height) =>
           dispatch({ type: 'MOVE_STRUCTURE', payload: { entityId, structureType: structureType as any, toCol, toRow, width, height } })
@@ -119,6 +141,18 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
         onRemoveDecoration={(col, row) => {
           dispatch({ type: 'REMOVE_DECORATION', payload: { col, row } });
         }}
+      />
+
+      {/* Top-center HUD bandeau: city card + weather + Argent/Météo/Annuaire drawers */}
+      <CityHeader
+        slug={slug}
+        portfolio={portfolio}
+        weather={cityState.weather}
+        onFocusDistrict={(projectId) => setFocusRequest({ projectId, ts: Date.now() })}
+        onAddDeal={() => setModal({ type: 'deal' })}
+        onAddBorrower={() => setModal({ type: 'borrower' })}
+        onSwitchCity={onSwitchCity}
+        onQuit={onQuit}
       />
 
       {/* Contextual panel based on what was clicked */}
@@ -163,23 +197,12 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
         onFlip={() => setPlacementMode(prev => prev ? { ...prev, flip: !prev.flip } : prev)}
       />
 
-      <PortfolioOverview portfolio={portfolio} />
-
-      {/* Save indicator + quit */}
+      {/* Save indicator (kept top-right per Lot 1 spec) */}
       <div style={styles.saveBar}>
-        <button style={styles.quitBtn} onClick={onQuit} title="Quitter la partie">
-          ← Quitter
-        </button>
         <span style={styles.saveStatus}>
           {saveStatus === 'saving' && '⏳ Sauvegarde...'}
           {saveStatus === 'saved' && '💾 Sauvegardé'}
         </span>
-      </div>
-
-      {/* Floating action buttons */}
-      <div style={styles.fab}>
-        <button style={styles.fabBtn} onClick={() => setModal({ type: 'borrower' })}>+ Borrower</button>
-        <button style={{ ...styles.fabBtn, ...styles.fabBtnPrimary }} onClick={() => setModal({ type: 'deal' })}>+ Deal</button>
       </div>
 
       {/* Modals */}
@@ -197,10 +220,23 @@ function GameScreen({ slug, initialPortfolio, onQuit }: { slug: string; initialP
 
 const styles: Record<string, React.CSSProperties> = {
   app: { position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', background: '#0A0F19' },
-  fab: { position: 'absolute', bottom: 24, left: 20, display: 'flex', gap: 8, zIndex: 10 },
-  fabBtn: { padding: '8px 16px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#CCC', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' },
-  fabBtnPrimary: { background: 'rgba(74,144,217,0.3)', borderColor: 'rgba(74,144,217,0.5)', color: '#6AB0F0' },
-  saveBar: { position: 'absolute', top: 16, right: 16, display: 'flex', alignItems: 'center', gap: 12, zIndex: 10 },
-  saveStatus: { color: '#667', fontFamily: 'monospace', fontSize: 11 },
-  quitBtn: { padding: '6px 14px', background: 'rgba(255,255,255,0.06)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.1)', borderRadius: 8, color: '#999', fontFamily: 'monospace', fontSize: 11, fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' },
+  saveBar: {
+    position: 'absolute',
+    top: 28,
+    right: 20,
+    display: 'flex',
+    alignItems: 'center',
+    zIndex: 10,
+    pointerEvents: 'none',
+  },
+  saveStatus: {
+    color: '#778',
+    fontFamily: 'monospace',
+    fontSize: 11,
+    background: 'rgba(15, 20, 35, 0.7)',
+    padding: '4px 10px',
+    borderRadius: 999,
+    border: '1px solid rgba(255,255,255,0.06)',
+    backdropFilter: 'blur(8px)',
+  },
 };
