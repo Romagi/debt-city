@@ -874,7 +874,12 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           drawBuilding(ctx, cmd.building);
           break;
         case 'shop':
-          if (cmd.building.syndicateSize !== 'none') drawShop(ctx, cmd.building);
+          // Skip the kiosk sprite (1-2 lenders) — it visually reads as a placeholder
+          // due to its sandwich-board look. We only draw a shop for 3+ lenders, where
+          // the shop_store / shop_mall sprites actually look like real buildings.
+          if (cmd.building.syndicateSize === 'shop' || cmd.building.syndicateSize === 'mall') {
+            drawShop(ctx, cmd.building);
+          }
           break;
       }
     }
