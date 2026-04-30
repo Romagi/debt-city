@@ -406,6 +406,37 @@ const DECO_SPRITE_MAP: Partial<Record<CellType, SpriteKey>> = {
   bush:    'bush',
 };
 
+// ─── Render commands (perf optimisation) ─────────────────────────────────────
+//
+// Instead of scanning the entire grid (200×200) on every frame, we pre-compute
+// a flat list of typed render commands once per cityState change. The render
+// loop then just iterates and dispatches by `kind`. This:
+//   • avoids per-frame closure allocation (no GC pressure)
+//   • avoids re-scanning sparse arrays
+//   • lets the painter's-algo sort run once instead of 60×/sec
+// See drawStaticGround / drawStaticSidewalks / drawStaticObjects below.
+
+type GroundCmd =
+  | { kind: 'grass'; col: number; row: number }
+  | { kind: 'road';  col: number; row: number; spriteKey: SpriteKey };
+
+interface SidewalkCmd { col: number; row: number; spriteKey: SpriteKey }
+
+type ObjectCmd =
+  | { kind: 'deco';         x: number; y: number; spriteKey: SpriteKey; flip: boolean; sortY: number }
+  | { kind: 'fence1';       x: number; y: number; sortY: number }
+  | { kind: 'fence2';       x: number; y: number; sortY: number }
+  | { kind: 'library';      building: CityBuilding; sortY: number }
+  | { kind: 'townhall';     building: CityBuilding; sortY: number }
+  | { kind: 'mainBuilding'; building: CityBuilding; sortY: number }
+  | { kind: 'shop';         building: CityBuilding; sortY: number };
+
+interface RenderScene {
+  groundCmds:   GroundCmd[];
+  sidewalkCmds: SidewalkCmd[];
+  objectCmds:   ObjectCmd[];
+}
+
 export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration, focusRequest }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
@@ -440,6 +471,97 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     () => cityState.districts.some(d => d.buildings.some(b => b.alertLevel !== 'none')),
     [cityState]
   );
+
+  // ─── Pre-computed render scene (PERF) ──────────────────────────────────────
+  // Built once per cityState change. The draw loop iterates these arrays
+  // instead of re-scanning the 200×200 grid on every frame.
+  const renderScene = useMemo<RenderScene>(() => {
+    const grid = cityState.grid;
+    const groundCmds:   GroundCmd[]   = [];
+    const sidewalkCmds: SidewalkCmd[] = [];
+    const objectCmds:   ObjectCmd[]   = [];
+
+    // ── Ground (Layer 1) — only the bounding box of all districts ──
+    if (grid.districts.length > 0) {
+      let minCol = Infinity, minRow = Infinity, maxCol = -Infinity, maxRow = -Infinity;
+      for (const d of grid.districts) {
+        minCol = Math.min(minCol, d.col);
+        minRow = Math.min(minRow, d.row);
+        maxCol = Math.max(maxCol, d.col + d.size);
+        maxRow = Math.max(maxRow, d.row + d.size);
+      }
+      for (let row = minRow; row < maxRow; row++) {
+        for (let col = minCol; col < maxCol; col++) {
+          const cell = grid.cells[row]?.[col];
+          if (cell?.type === 'road') {
+            groundCmds.push({ kind: 'road', col, row, spriteKey: getRoadSpriteKey(getRoadVariant(grid, col, row)) });
+          } else {
+            groundCmds.push({ kind: 'grass', col, row });
+          }
+        }
+      }
+      groundCmds.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+    }
+
+    // ── One pass for sidewalks (Layer 2) + decos (Layer 3) ──
+    for (let r = 0; r < grid.size; r++) {
+      const rowCells = grid.cells[r];
+      if (!rowCells) continue;
+      for (let c = 0; c < grid.size; c++) {
+        const cell = rowCells[c];
+        if (!cell) continue;
+        if (cell.type in SIDEWALK_SPRITE_MAP) {
+          sidewalkCmds.push({ col: c, row: r, spriteKey: SIDEWALK_SPRITE_MAP[cell.type] ?? 'tile_sidewalk_flat' });
+          continue;
+        }
+        if (
+          DECORATION_TYPES.has(cell.type) &&
+          cell.type !== 'road' &&
+          cell.originCol == null &&
+          cell.originRow == null
+        ) {
+          const spriteKey = DECO_SPRITE_MAP[cell.type];
+          if (!spriteKey) continue;
+          const rawSize = STRUCTURE_SIZES[cell.type] ?? [1, 1] as [number, number];
+          const flip = cell.flip ?? false;
+          const [fw, fh] = (flip && rawSize[0] !== rawSize[1]) ? [rawSize[1], rawSize[0]] : rawSize;
+          const { x, y } = gridToScreen(c + fw - 0.5, r + fh - 0.5);
+          objectCmds.push({ kind: 'deco', x, y, spriteKey, flip, sortY: y });
+        }
+      }
+    }
+    sidewalkCmds.sort((a, b) => (a.row + a.col) - (b.row + b.col));
+
+    // ── Fences (Layer 4) ──
+    if (grid.fenceOverlay) {
+      for (let r = 0; r < grid.size; r++) {
+        const overlayRow = grid.fenceOverlay[r];
+        if (!overlayRow) continue;
+        for (let c = 0; c < grid.size; c++) {
+          const fence = overlayRow[c];
+          if (!fence || (!fence.fence1_e && !fence.fence2_s)) continue;
+          const { x, y } = gridToScreen(c + 0.5, r + 0.5);
+          if (fence.fence1_e) objectCmds.push({ kind: 'fence1', x, y, sortY: y });
+          if (fence.fence2_s) objectCmds.push({ kind: 'fence2', x, y, sortY: y + 0.5 });
+        }
+      }
+    }
+
+    // ── Buildings (Layer 5) ──
+    for (const district of cityState.districts) {
+      for (const building of district.buildings) {
+        objectCmds.push({ kind: 'library',      building, sortY: building.libraryPos.y });
+        objectCmds.push({ kind: 'townhall',     building, sortY: building.townhallPos.y });
+        objectCmds.push({ kind: 'mainBuilding', building, sortY: building.y });
+        objectCmds.push({ kind: 'shop',         building, sortY: building.shopPos.y });
+      }
+    }
+
+    // Painter's algo: ascending screen Y → back-to-front
+    objectCmds.sort((a, b) => a.sortY - b.sortY);
+
+    return { groundCmds, sidewalkCmds, objectCmds };
+  }, [cityState]);
 
   // Mark redraw needed when city state or placement mode changes
   useEffect(() => { needsRedrawRef.current = true; }, [cityState, placementMode]);
@@ -594,39 +716,15 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
 
     if (grid.districts.length === 0) return;
 
-    // Bounding box of all districts
-    let minCol = Infinity, minRow = Infinity, maxCol = -Infinity, maxRow = -Infinity;
-    for (const d of grid.districts) {
-      minCol = Math.min(minCol, d.col);
-      minRow = Math.min(minRow, d.row);
-      maxCol = Math.max(maxCol, d.col + d.size);
-      maxRow = Math.max(maxRow, d.row + d.size);
-    }
-
-    // ── Layer 1: Ground — tile_grass everywhere, road sprites on road cells ──
-    // Collect all cells in bounding box, sort back-to-front (painter's algo)
-    const allCells: { col: number; row: number }[] = [];
-    for (let row = minRow; row < maxRow; row++) {
-      for (let col = minCol; col < maxCol; col++) {
-        allCells.push({ col, row });
-      }
-    }
-    allCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
-
-    for (const { col, row } of allCells) {
-      const cell = grid.cells[row]?.[col];
-      let spriteKey: SpriteKey = 'tile_grass';
-      if (cell?.type === 'road') {
-        spriteKey = getRoadSpriteKey(getRoadVariant(grid, col, row));
-      }
-      // Ground tiles: SOUTH-TIP anchor — bottom-center of PNG = south tip of iso diamond.
-      // Convention matches the sprite library: adjacent tiles share edges automatically.
-      const { x: tx, y: ty } = gridToScreen(col + 0.5, row + 0.5);
+    // ── Layer 1: Ground — iterate pre-computed renderScene.groundCmds ──
+    // (the bounding-box scan + sort happens once in useMemo, not per frame)
+    for (const cmd of renderScene.groundCmds) {
+      const { x: tx, y: ty } = gridToScreen(cmd.col + 0.5, cmd.row + 0.5);
       ctx.save();
       ctx.translate(tx, ty);
+      const spriteKey: SpriteKey = cmd.kind === 'road' ? cmd.spriteKey : 'tile_grass';
       if (!drawSpriteOnGrid(ctx, spriteKey)) {
-        // Fallback: colored diamond — drawn from the north tip at (0,0)
-        const fill = cell?.type === 'road' ? 'rgba(80,80,100,0.6)' : 'rgba(90,160,60,0.3)';
+        const fill = cmd.kind === 'road' ? 'rgba(80,80,100,0.6)' : 'rgba(90,160,60,0.3)';
         drawTileDiamond(ctx, 0, 0, fill, null, 0, tw, th);
       }
       ctx.restore();
@@ -711,130 +809,58 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
   }
 
   /** Layer 2 — Sidewalk overlay only.
-   *  Flat tiles drawn on top of ground, below all 3-D objects. */
-  function drawDecorations(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
-    const sidewalkCells: { col: number; row: number; type: CellType }[] = [];
-    for (let r = 0; r < grid.size; r++) {
-      for (let c = 0; c < grid.size; c++) {
-        const cell = grid.cells[r]?.[c];
-        if (cell && cell.type in SIDEWALK_SPRITE_MAP) {
-          sidewalkCells.push({ col: c, row: r, type: cell.type });
-        }
-      }
-    }
-    sidewalkCells.sort((a, b) => (a.row + a.col) - (b.row + b.col));
-    for (const { col, row, type } of sidewalkCells) {
-      const spriteKey = SIDEWALK_SPRITE_MAP[type] ?? 'tile_sidewalk_flat';
-      const { x, y } = gridToScreen(col + 0.5, row + 0.5);
+   *  Iterates the pre-computed renderScene.sidewalkCmds (no per-frame grid scan). */
+  function drawDecorations(ctx: CanvasRenderingContext2D, _grid: import('../types/portfolio').GridState) {
+    for (const cmd of renderScene.sidewalkCmds) {
+      const { x, y } = gridToScreen(cmd.col + 0.5, cmd.row + 0.5);
       ctx.save();
       ctx.translate(x, y);
-      drawSpriteOnGrid(ctx, spriteKey);
+      drawSpriteOnGrid(ctx, cmd.spriteKey);
       ctx.restore();
     }
   }
 
   /** Layers 3-5 — Unified depth-sorted pass.
    *
-   *  Collects ALL visual objects — decoration sprites, fence overlay cells, and building
-   *  sub-sprites — into a single list keyed by their south-tip screen Y.  Sorting that
-   *  list ascending gives the correct painter's-algorithm order so that objects further
-   *  south (higher screen Y) are always drawn on top, regardless of type.
-   *
-   *  Previous bug: fences lived in a separate "Layer 4" loop that ran after all decos,
-   *  and buildings ran in a separate `drawDistrict` pass after that — so fences were
-   *  always in front of trees and buildings were always in front of everything.
+   *  Iterates the pre-computed and pre-sorted renderScene.objectCmds list and dispatches
+   *  by `kind`. The list is built once per cityState change (in useMemo above) so the
+   *  per-frame cost is just the dispatch loop — no closures, no allocations, no scan.
    */
-  function drawUnifiedObjects(ctx: CanvasRenderingContext2D, grid: import('../types/portfolio').GridState) {
-    const items: Array<{ sortY: number; draw: () => void }> = [];
-
-    // ── 1. Decoration objects from grid.cells (trees, utilities, fences placed by user…) ──
-    for (let r = 0; r < grid.size; r++) {
-      for (let c = 0; c < grid.size; c++) {
-        const cell = grid.cells[r]?.[c];
-        if (
-          !cell ||
-          !DECORATION_TYPES.has(cell.type) ||
-          cell.type === 'road' ||
-          (cell.type in SIDEWALK_SPRITE_MAP) ||
-          cell.originCol != null ||
-          cell.originRow != null
-        ) continue;
-        const spriteKey = DECO_SPRITE_MAP[cell.type];
-        if (!spriteKey) continue;
-        const rawSize = STRUCTURE_SIZES[cell.type] ?? [1, 1] as [number, number];
-        const flip = cell.flip ?? false;
-        const [fw, fh] = (flip && rawSize[0] !== rawSize[1]) ? [rawSize[1], rawSize[0]] : rawSize;
-        // South tip = anchor point, same formula as calibrate.html
-        const { x, y } = gridToScreen(c + fw - 0.5, r + fh - 0.5);
-        const sortY = y;
-        // Capture loop variables explicitly to avoid closure pitfalls
-        const _x = x, _y = y, _sk = spriteKey, _flip = flip;
-        items.push({ sortY, draw: () => {
-          ctx.save(); ctx.translate(_x, _y); drawSpriteOnGrid(ctx, _sk, _flip); ctx.restore();
-        }});
+  function drawUnifiedObjects(ctx: CanvasRenderingContext2D, _grid: import('../types/portfolio').GridState) {
+    for (const cmd of renderScene.objectCmds) {
+      switch (cmd.kind) {
+        case 'deco':
+          ctx.save(); ctx.translate(cmd.x, cmd.y);
+          drawSpriteOnGrid(ctx, cmd.spriteKey, cmd.flip);
+          ctx.restore();
+          break;
+        case 'fence1':
+          ctx.save(); ctx.translate(cmd.x, cmd.y);
+          drawSpriteOnGrid(ctx, 'picket_fence_1');
+          ctx.restore();
+          break;
+        case 'fence2':
+          ctx.save(); ctx.translate(cmd.x, cmd.y);
+          drawSpriteOnGrid(ctx, 'picket_fence_2');
+          ctx.restore();
+          break;
+        case 'library':
+          if (cmd.building.project.documents.length > 0) drawLibrary(ctx, cmd.building);
+          else drawEmptyLot(ctx, cmd.building.libraryPos, 'construction_2x2');
+          break;
+        case 'townhall':
+          if (cmd.building.project.covenants.length > 0) drawTownhall(ctx, cmd.building);
+          else drawEmptyLot(ctx, cmd.building.townhallPos, 'construction_2x2');
+          break;
+        case 'mainBuilding':
+          drawBuilding(ctx, cmd.building);
+          break;
+        case 'shop':
+          if (cmd.building.syndicateSize !== 'none') drawShop(ctx, cmd.building);
+          else drawEmptyLot(ctx, cmd.building.shopPos, 'construction_1x1');
+          break;
       }
     }
-
-    // ── 2. Fence overlay — rendered at tile-centre, keyed by that centre's screen Y ──
-    //
-    //  fence1_e (PicketFence1, xOff=+0.24) → SE "/" edge.
-    //  fence2_s (PicketFence2, xOff=-0.26) → SW "\" edge.
-    //  On the same tile, fence2_s gets +0.5 so it draws on top of fence1_e at NE corner.
-    if (grid.fenceOverlay) {
-      for (let r = 0; r < grid.size; r++) {
-        for (let c = 0; c < grid.size; c++) {
-          const fence = grid.fenceOverlay[r]?.[c];
-          if (!fence || (!fence.fence1_e && !fence.fence2_s)) continue;
-          const { x: cx, y: cy } = gridToScreen(c + 0.5, r + 0.5);
-          if (fence.fence1_e) {
-            const _cx = cx, _cy = cy;
-            items.push({ sortY: cy, draw: () => {
-              ctx.save(); ctx.translate(_cx, _cy); drawSpriteOnGrid(ctx, 'picket_fence_1'); ctx.restore();
-            }});
-          }
-          if (fence.fence2_s) {
-            const _cx = cx, _cy = cy;
-            items.push({ sortY: cy + 0.5, draw: () => {
-              ctx.save(); ctx.translate(_cx, _cy); drawSpriteOnGrid(ctx, 'picket_fence_2'); ctx.restore();
-            }});
-          }
-        }
-      }
-    }
-
-    // ── 3. Building sub-sprites — each sub-structure keyed by its south-tip screen Y ──
-    for (const district of sortedDistricts) {
-      for (const building of district.buildings) {
-        // Library (2×2 — upper-left of district)
-        const _lib = building;
-        items.push({ sortY: building.libraryPos.y, draw: () => {
-          if (_lib.project.documents.length > 0) drawLibrary(ctx, _lib);
-          else drawEmptyLot(ctx, _lib.libraryPos, 'construction_2x2');
-        }});
-
-        // Townhall (2×2 — left of main building)
-        const _th = building;
-        items.push({ sortY: building.townhallPos.y, draw: () => {
-          if (_th.project.covenants.length > 0) drawTownhall(ctx, _th);
-          else drawEmptyLot(ctx, _th.townhallPos, 'construction_2x2');
-        }});
-
-        // Main building (center)
-        const _b = building;
-        items.push({ sortY: building.y, draw: () => drawBuilding(ctx, _b) });
-
-        // Shop / syndicate (right — front-most)
-        const _sh = building;
-        items.push({ sortY: building.shopPos.y, draw: () => {
-          if (_sh.syndicateSize !== 'none') drawShop(ctx, _sh);
-          else drawEmptyLot(ctx, _sh.shopPos, 'construction_1x1');
-        }});
-      }
-    }
-
-    // Sort ascending screen Y → correct painter's order (back → front)
-    items.sort((a, b) => a.sortY - b.sortY);
-    for (const { draw } of items) draw();
   }
 
   /** Ghost preview + eraser highlight — drawn on top of all scene objects. */
@@ -1564,22 +1590,35 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     return () => ro.disconnect();
   }, []);
 
-  // ─── Fix 2 — Conditional RAF loop ───
-
+  // ─── Conditional RAF loop with 30fps throttle (PERF) ───
+  //
+  // Strategy:
+  //   • A redraw triggered by user action (state change, hover, drag, focus anim)
+  //     runs immediately on the next frame for max responsiveness.
+  //   • A redraw triggered ONLY by hasAnimations (smoke/fire on alerted buildings)
+  //     is throttled to 30fps — the human eye can't tell the difference and we
+  //     halve the canvas CPU cost while there's no interaction.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
     let id: number;
+    let lastDrawTs = 0;
+    const ANIM_INTERVAL_MS = 1000 / 30; // 30fps cap when only animating
+
     function render() {
-      // Only redraw if needed OR if animations are active
-      if (needsRedrawRef.current || hasAnimations) {
+      const now = performance.now();
+      const manualRedraw = needsRedrawRef.current;
+      const animRedrawDue = hasAnimations && (now - lastDrawTs) >= ANIM_INTERVAL_MS;
+
+      if (manualRedraw || animRedrawDue) {
         const dpr = window.devicePixelRatio || 1;
         const { w, h } = canvasSizeRef.current;
         ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
         draw(ctx!, w, h);
         needsRedrawRef.current = false;
+        lastDrawTs = now;
       }
       id = requestAnimationFrame(render);
     }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { memo, useState, useMemo } from 'react';
 import type { Portfolio, Project } from '../types/portfolio';
 import { formatMoney } from '../city/utils';
 
@@ -34,18 +34,34 @@ const STATUS_COLOR: Record<string, string> = {
 /**
  * Drawer "🗺 Annuaire" — liste des deals + boutons +Deal / +Borrower.
  * Clic sur un deal → focus caméra sur son quartier (et fermeture du drawer).
+ *
+ * Wrapped in React.memo: parent re-renders on every portfolio tick, but the
+ * drawer only recomputes when the projects/borrowers references change.
  */
-export default function DirectoryDrawer({ portfolio, onFocusDistrict, onAddDeal, onAddBorrower, onClose }: Props) {
+function DirectoryDrawer({ portfolio, onFocusDistrict, onAddDeal, onAddBorrower, onClose }: Props) {
   const [filter, setFilter] = useState<FilterStatus>('all');
   const [query, setQuery] = useState('');
 
+  // Counts per status — single pass over projects, memoised on projects only
+  const counts = useMemo<Record<FilterStatus, number>>(() => {
+    const c = { all: portfolio.projects.length, published: 0, draft: 0, finished: 0, archived: 0 };
+    for (const p of portfolio.projects) {
+      if      (p.currentStatus === 'published') c.published++;
+      else if (p.currentStatus === 'draft')     c.draft++;
+      else if (p.currentStatus === 'finished')  c.finished++;
+      else if (p.currentStatus === 'archived')  c.archived++;
+    }
+    return c;
+  }, [portfolio.projects]);
+
+  // Filter+sort runs only when relevant inputs change
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const order: Record<string, number> = { published: 0, draft: 1, finished: 2, archived: 3 };
     return portfolio.projects
       .filter(p => filter === 'all' || p.currentStatus === filter)
       .filter(p => !q || p.title.toLowerCase().includes(q))
       .sort((a, b) => {
-        const order: Record<string, number> = { published: 0, draft: 1, finished: 2, archived: 3 };
         const sd = (order[a.currentStatus] ?? 9) - (order[b.currentStatus] ?? 9);
         if (sd !== 0) return sd;
         return b.globalFundingAmount.amount - a.globalFundingAmount.amount;
@@ -55,14 +71,6 @@ export default function DirectoryDrawer({ portfolio, onFocusDistrict, onAddDeal,
   const handleFocus = (p: Project) => {
     onFocusDistrict(p.id);
     onClose();
-  };
-
-  const counts: Record<FilterStatus, number> = {
-    all: portfolio.projects.length,
-    published: portfolio.projects.filter(p => p.currentStatus === 'published').length,
-    draft: portfolio.projects.filter(p => p.currentStatus === 'draft').length,
-    finished: portfolio.projects.filter(p => p.currentStatus === 'finished').length,
-    archived: portfolio.projects.filter(p => p.currentStatus === 'archived').length,
   };
 
   return (
@@ -148,6 +156,8 @@ export default function DirectoryDrawer({ portfolio, onFocusDistrict, onAddDeal,
     </div>
   );
 }
+
+export default memo(DirectoryDrawer);
 
 const styles: Record<string, React.CSSProperties> = {
   titleRow: {

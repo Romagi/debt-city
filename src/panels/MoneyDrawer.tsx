@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import type { Portfolio } from '../types/portfolio';
 import { formatMoney } from '../city/utils';
 
@@ -8,37 +9,39 @@ interface Props {
 /**
  * Drawer "💰 Argent" — financial aggregates of the portfolio.
  * Replaces the totalFunding / Deals / Borrowers cells of the old PortfolioOverview bar.
+ *
+ * Wrapped in React.memo: the parent (CityHeader) re-renders on every portfolio
+ * tick, but the drawer only needs to recompute when the portfolio reference
+ * actually changes. All aggregates are memoised on the same key.
  */
-export default function MoneyDrawer({ portfolio }: Props) {
+function MoneyDrawer({ portfolio }: Props) {
   const { projects, borrowers, totalFunding } = portfolio;
 
-  const active = projects.filter(p => p.currentStatus === 'published').length;
-  const drafts = projects.filter(p => p.currentStatus === 'draft').length;
-  const finished = projects.filter(p => p.currentStatus === 'finished').length;
-  const archived = projects.filter(p => p.currentStatus === 'archived').length;
+  // All aggregates in a single useMemo — recomputed only when portfolio changes
+  const stats = useMemo(() => {
+    let active = 0, drafts = 0, finished = 0, archived = 0;
+    let totalAllocated = 0, trancheCount = 0, lenderCount = 0;
+    const byNature: Record<string, { count: number; amount: number }> = {};
+    for (const p of projects) {
+      if      (p.currentStatus === 'published') active++;
+      else if (p.currentStatus === 'draft')     drafts++;
+      else if (p.currentStatus === 'finished')  finished++;
+      else if (p.currentStatus === 'archived')  archived++;
+      trancheCount += p.tranches.length;
+      lenderCount  += p.lenders.length;
+      for (const l of p.lenders) {
+        for (const a of l.allocations) totalAllocated += a.amount.amount;
+      }
+      const k = p.nature ?? 'other';
+      if (!byNature[k]) byNature[k] = { count: 0, amount: 0 };
+      byNature[k].count  += 1;
+      byNature[k].amount += p.globalFundingAmount.amount;
+    }
+    const natureRows = Object.entries(byNature).sort((a, b) => b[1].amount - a[1].amount);
+    return { active, drafts, finished, archived, totalAllocated, trancheCount, lenderCount, natureRows };
+  }, [projects]);
 
-  // Total exposure = sum of all lender allocations
-  const totalAllocated = projects.reduce(
-    (s, p) => s + p.lenders.reduce(
-      (sl, l) => sl + l.allocations.reduce((sa, a) => sa + a.amount.amount, 0),
-      0,
-    ),
-    0,
-  );
-
-  // Total tranches across all projects
-  const trancheCount = projects.reduce((s, p) => s + p.tranches.length, 0);
-  const lenderCount = projects.reduce((s, p) => s + p.lenders.length, 0);
-
-  // Breakdown by nature
-  const byNature: Record<string, { count: number; amount: number }> = {};
-  for (const p of projects) {
-    const k = p.nature ?? 'other';
-    if (!byNature[k]) byNature[k] = { count: 0, amount: 0 };
-    byNature[k].count += 1;
-    byNature[k].amount += p.globalFundingAmount.amount;
-  }
-  const natureRows = Object.entries(byNature).sort((a, b) => b[1].amount - a[1].amount);
+  const { active, drafts, finished, archived, totalAllocated, trancheCount, lenderCount, natureRows } = stats;
 
   return (
     <div>
@@ -101,6 +104,8 @@ function prettyNature(n: string): string {
     other:           'Autres',
   } as Record<string, string>)[n] ?? n;
 }
+
+export default memo(MoneyDrawer);
 
 const styles: Record<string, React.CSSProperties> = {
   title: {

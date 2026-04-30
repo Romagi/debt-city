@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import type { Portfolio, WeatherState } from '../types/portfolio';
 
 interface Props {
@@ -14,22 +15,34 @@ const WEATHER_META: Record<WeatherState, { icon: string; label: string; color: s
 /**
  * Drawer "🌤 Météo" — détail de la santé du portfolio (covenants & terms).
  * La météo de la ville est conditionnée par les states de termes (breached, late, …).
+ *
+ * Wrapped in React.memo + useMemo — see MoneyDrawer for rationale.
  */
-export default function WeatherDrawer({ portfolio, weather }: Props) {
+function WeatherDrawer({ portfolio, weather }: Props) {
   const { termStateCount, projects } = portfolio;
   const meta = WEATHER_META[weather];
 
-  // Compte les covenants et terms totaux pour le contexte
-  const covenantCount = projects.reduce((s, p) => s + p.covenants.length, 0);
-  const termCount = projects.reduce(
-    (s, p) => s + p.covenants.reduce((sc, c) => sc + c.terms.length, 0),
-    0,
-  );
-
-  // Projets par traffic-light dérivé (rouge = au moins 1 term breached)
-  const redProjects = projects.filter(p =>
-    p.covenants.some(c => c.terms.some(t => t.currentStatus === 'breached')),
-  );
+  // Single pass over projects → covenants → terms (avoid 3 nested reduces + 1 filter)
+  const stats = useMemo(() => {
+    let covenantCount = 0;
+    let termCount = 0;
+    const redProjects: typeof projects = [];
+    for (const p of projects) {
+      covenantCount += p.covenants.length;
+      let breached = false;
+      for (const c of p.covenants) {
+        termCount += c.terms.length;
+        if (!breached) {
+          for (const t of c.terms) {
+            if (t.currentStatus === 'breached') { breached = true; break; }
+          }
+        }
+      }
+      if (breached) redProjects.push(p);
+    }
+    return { covenantCount, termCount, redProjects };
+  }, [projects]);
+  const { covenantCount, termCount, redProjects } = stats;
 
   return (
     <div>
@@ -93,6 +106,8 @@ export default function WeatherDrawer({ portfolio, weather }: Props) {
     </div>
   );
 }
+
+export default memo(WeatherDrawer);
 
 function Indicator({ label, count, color, hint }: { label: string; count: number; color: string; hint: string }) {
   const active = count > 0;
