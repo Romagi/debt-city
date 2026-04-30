@@ -19,12 +19,9 @@ const TOWNHALL_COLORS = { base: '#8B6F5C', side: '#6E5848', top: '#A88A74' };
 const SHOP_COLORS = { base: '#D4A574', side: '#B8956A', top: '#E8C098' };
 const LIBRARY_COLORS = { base: '#5B8C8C', side: '#4A7272', top: '#72A6A6' };
 
-const STATE_OVERLAY: Record<string, string> = {
-  construction: 'rgba(255, 200, 50, 0.25)',
-  dimmed: 'rgba(100, 100, 100, 0.5)',
-  closed: 'rgba(80, 80, 80, 0.6)',
-};
-
+// (STATE_OVERLAY removed — the polygon overlay was sized for the old iso-box
+//  rendering and didn't match the new sprite footprints, leaving ghost shapes
+//  on the ground next to draft/archived/finished buildings.)
 // (TRAFFIC_LIGHT_COLORS removed — traffic-light dot dropped from townhalls)
 
 // ─── Sizes for sub-structures ───
@@ -1080,15 +1077,13 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
       drawIsoBox(ctx, bw, bh, colors.base, colors.side, colors.top);
     }
 
-    // State overlay (dimmed/closed)
-    const overlay = STATE_OVERLAY[state];
-    if (overlay) {
-      ctx.fillStyle = overlay;
-      ctx.beginPath();
-      ctx.moveTo(0, 0); ctx.lineTo(bw / 2, bw / 4); ctx.lineTo(bw / 2, bw / 4 - bh);
-      ctx.lineTo(0, -bh); ctx.lineTo(-bw / 2, bw / 4 - bh); ctx.lineTo(-bw / 2, bw / 4);
-      ctx.closePath(); ctx.fill();
-    }
+    // (Removed) — the previous STATE_OVERLAY polygon was sized for the old
+    // iso-box rendering (`bw=72`, `bh=funding-derived`) and no longer matched the
+    // sprite footprint, leaving a coloured "ghost footprint" on the ground next
+    // to draft / archived / finished buildings. It was broken AND it was the
+    // residue the user kept seeing. Dropped entirely; the crane below remains
+    // for draft state, and archived / finished buildings just keep their normal
+    // sprite (status is conveyed in the Annuaire and contextual panels).
 
     // Crane for draft projects
     if (state === 'construction') {
