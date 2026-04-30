@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import type { CityState, CityBuilding, CityDistrict, ClickTarget, CellType } from '../types/portfolio';
+import type { CityState, CityBuilding, ClickTarget, CellType } from '../types/portfolio';
 import { GRID_SIZE, ISO_TILE_W, ISO_TILE_H, STRUCTURE_SIZES, gridToScreen, screenToGrid, getDistrictForProject, getDistrictAt, fitsInDistrict, canPlace, DECORATION_TYPES } from '../types/portfolio';
 import { getRoadVariant } from './roadAutoTile';
 import type { RoadVariant } from './roadAutoTile';
