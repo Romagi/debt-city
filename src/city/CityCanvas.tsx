@@ -43,8 +43,7 @@ const LIBRARY_SIZES: Record<string, { lw: number; lh: number }> = {
   large:  { lw: 52, lh: 34 },
 };
 
-const EMPTY_LOT_W = 24;
-const EMPTY_LOT_H = 10;
+// (EMPTY_LOT_W / EMPTY_LOT_H removed — empty-lot placeholders dropped)
 
 /** Per-sprite rendering calibration — SOUTH-TIP anchor convention.
  *
@@ -861,31 +860,22 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
           drawSpriteOnGrid(ctx, 'picket_fence_2');
           ctx.restore();
           break;
-        // Empty-lot placeholders for sub-structures are suppressed for draft and archived
-        // deals — they were visually noisy and felt like leftover stubs. Published / finished
-        // deals still get the construction-sprite hint when a sub-structure is empty so the
-        // user knows where to add docs / covenants / lenders.
-        case 'library': {
-          const status = cmd.building.project.currentStatus;
+        // Sub-structures are drawn ONLY when they have content (covenants/docs/lenders).
+        // Empty placeholders (construction sprites) were dropped entirely — they looked
+        // like stale stubs regardless of deal status. The user will use the contextual
+        // panels to discover where to add docs / covenants / lenders.
+        case 'library':
           if (cmd.building.project.documents.length > 0) drawLibrary(ctx, cmd.building);
-          else if (status !== 'draft' && status !== 'archived') drawEmptyLot(ctx, cmd.building.libraryPos, 'construction_2x2');
           break;
-        }
-        case 'townhall': {
-          const status = cmd.building.project.currentStatus;
+        case 'townhall':
           if (cmd.building.project.covenants.length > 0) drawTownhall(ctx, cmd.building);
-          else if (status !== 'draft' && status !== 'archived') drawEmptyLot(ctx, cmd.building.townhallPos, 'construction_2x2');
           break;
-        }
         case 'mainBuilding':
           drawBuilding(ctx, cmd.building);
           break;
-        case 'shop': {
-          const status = cmd.building.project.currentStatus;
+        case 'shop':
           if (cmd.building.syndicateSize !== 'none') drawShop(ctx, cmd.building);
-          else if (status !== 'draft' && status !== 'archived') drawEmptyLot(ctx, cmd.building.shopPos, 'construction_1x1');
           break;
-        }
       }
     }
   }
@@ -1270,53 +1260,6 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     return true;
   }
 
-  /** Draw an empty lot placeholder.
-   *  If a construction sprite key is provided, it is drawn first (at 80% alpha).
-   *  Falls back to a dashed diamond outline when the sprite isn't loaded yet. */
-  function drawEmptyLot(
-    ctx: CanvasRenderingContext2D,
-    pos: { x: number; y: number },
-    constructionKey?: SpriteKey,
-  ) {
-    ctx.save();
-    ctx.translate(pos.x, pos.y);
-
-    // Try the construction sprite first
-    if (constructionKey) {
-      ctx.globalAlpha = 0.8;
-      if (drawSpriteOnGrid(ctx, constructionKey)) {
-        ctx.restore();
-        return;
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    // Fallback: dashed diamond outline
-    const w = EMPTY_LOT_W;
-    const h = EMPTY_LOT_H;
-    ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(w / 2, w / 4);
-    ctx.lineTo(w / 2, w / 4 - h);
-    ctx.lineTo(0, -h);
-    ctx.lineTo(-w / 2, w / 4 - h);
-    ctx.lineTo(-w / 2, w / 4);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.03)';
-    ctx.fill();
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('+', 0, -h / 2 + w / 8);
-
-    ctx.restore();
-  }
 
   // ─── Tooltip ───
 

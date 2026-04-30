@@ -1,5 +1,5 @@
 import type { Portfolio, Project, Borrower, Tranche, Lender, TermStatus, Term, CovenantNature, Money, DocumentDrive, CellType } from '../types/portfolio';
-import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace, clearFencesInArea, getDistrictForProject, getDistrictAt, fitsInDistrict, STRUCTURE_SIZES, DECORATION_TYPES } from '../types/portfolio';
+import { TERM_TRANSITION_MAP, STATUS_TO_STATE, removeFromGrid, placeOnGrid, canPlace, clearFencesInArea, clearDistrictRegion, getDistrictForProject, getDistrictAt, fitsInDistrict, STRUCTURE_SIZES, DECORATION_TYPES } from '../types/portfolio';
 import type { DistrictBounds } from '../types/portfolio';
 
 // ─── Action types ───
@@ -185,34 +185,11 @@ function placeGapRoads(grid: GridState, district: DistrictBounds): GridState {
  *  gap at the deleted district's SE corner is acceptable.
  */
 function removeDistrict(grid: GridState, district: DistrictBounds): GridState {
-  const { col: dc, row: dr, size } = district;
-
-  /** True iff (c, r) is owned by this district (district body + its W gap col + N gap row). */
-  function isOwned(c: number, r: number): boolean {
-    // Inside the district bounding box
-    if (c >= dc && c < dc + size && r >= dr && r < dr + size) return true;
-    // West gap column at rows aligned with the district
-    if (c === dc - 1 && r >= dr && r < dr + size) return true;
-    // North gap row at cols aligned with the district
-    if (r === dr - 1 && c >= dc && c < dc + size) return true;
-    // NW corner cell (intersection of both gaps)
-    if (c === dc - 1 && r === dr - 1) return true;
-    return false;
-  }
-
-  const newCells = grid.cells.map((rowArr, r) =>
-    rowArr.map((cell, c) => isOwned(c, r) ? null : cell)
-  );
-
-  const newOverlay = grid.fenceOverlay
-    ? grid.fenceOverlay.map((rowArr, r) =>
-        rowArr.map((cell, c) => isOwned(c, r) ? null : cell)
-      )
-    : grid.fenceOverlay;
-
-  const newDistricts = grid.districts.filter(d => d.projectId !== district.projectId);
-
-  return { ...grid, cells: newCells, fenceOverlay: newOverlay, districts: newDistricts };
+  const cleared = clearDistrictRegion(grid, district);
+  return {
+    ...cleared,
+    districts: cleared.districts.filter(d => d.projectId !== district.projectId),
+  };
 }
 
 // ─── Reducer ───

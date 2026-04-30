@@ -1,4 +1,5 @@
 import type { Portfolio } from '../types/portfolio';
+import { clearDistrictRegion } from '../types/portfolio';
 
 // ─── Types ───
 
@@ -110,11 +111,19 @@ export async function loadSession(
 
 /**
  * Migrate saved portfolio data to the current schema.
+ *
  * — v1→v2: road_2 and road_cross are now handled by auto-tiling;
- *           all road variants collapse to a single 'road' CellType.
+ *          all road variants collapse to a single 'road' CellType.
+ *
+ * — v2→v3: clean up orphaned districts.  Sessions saved before the
+ *          DELETE_PROJECT cell-cleanup fix may carry residual cells + fences
+ *          for projects that no longer exist.  We rebuild the grid by wiping
+ *          their region and dropping the district entry.
  */
 function migratePortfolio(portfolio: Portfolio): Portfolio {
   if (!portfolio.grid?.cells) return portfolio;
+
+  // v1→v2 — collapse legacy road variants
   const newCells = portfolio.grid.cells.map(row =>
     row.map(cell => {
       if (!cell) return null;
@@ -125,7 +134,27 @@ function migratePortfolio(portfolio: Portfolio): Portfolio {
       return cell;
     }),
   );
-  return { ...portfolio, grid: { ...portfolio.grid, cells: newCells } };
+  let migrated: Portfolio = {
+    ...portfolio,
+    grid: { ...portfolio.grid, cells: newCells },
+  };
+
+  // v2→v3 — remove orphaned districts (project deleted before cleanup fix landed)
+  if (migrated.grid.districts && migrated.projects) {
+    const projectIds = new Set(migrated.projects.map(p => p.id));
+    const orphans = migrated.grid.districts.filter(d => !projectIds.has(d.projectId));
+    if (orphans.length > 0) {
+      let grid = migrated.grid;
+      for (const orphan of orphans) grid = clearDistrictRegion(grid, orphan);
+      grid = {
+        ...grid,
+        districts: grid.districts.filter(d => projectIds.has(d.projectId)),
+      };
+      migrated = { ...migrated, grid };
+    }
+  }
+
+  return migrated;
 }
 
 export function savePortfolio(slug: string, portfolio: Portfolio): void {

@@ -592,6 +592,34 @@ export function allocateDistrict(grid: GridState, projectId: string): DistrictBo
 }
 
 /** Remove fence cells from a rectangular area (fences are permeable to roads and buildings) */
+/** Wipe everything that belongs to a district being deleted/migrated:
+ *   • Cells inside the district bounding box (building, townhall, shop, library, decos)
+ *   • Cells in the district's W-gap column + N-gap row + NW corner cell
+ *   • Fence overlay flags in the same area
+ *
+ *  Does NOT remove the district from grid.districts — caller's responsibility,
+ *  since the reducer wants to filter it out but the migration sometimes wants to
+ *  iterate them all first. */
+export function clearDistrictRegion(grid: GridState, district: DistrictBounds): GridState {
+  const { col: dc, row: dr, size } = district;
+  const isOwned = (c: number, r: number): boolean => {
+    if (c >= dc && c < dc + size && r >= dr && r < dr + size) return true;
+    if (c === dc - 1 && r >= dr && r < dr + size) return true;
+    if (r === dr - 1 && c >= dc && c < dc + size) return true;
+    if (c === dc - 1 && r === dr - 1) return true;
+    return false;
+  };
+  const newCells = grid.cells.map((rowArr, r) =>
+    rowArr.map((cell, c) => isOwned(c, r) ? null : cell),
+  );
+  const newOverlay = grid.fenceOverlay
+    ? grid.fenceOverlay.map((rowArr, r) =>
+        rowArr.map((cell, c) => isOwned(c, r) ? null : cell),
+      )
+    : grid.fenceOverlay;
+  return { ...grid, cells: newCells, fenceOverlay: newOverlay };
+}
+
 export function clearFencesInArea(grid: GridState, col: number, row: number, w: number, h: number): GridState {
   let changed = false;
   const newCells = grid.cells.map((rowArr, r) =>
