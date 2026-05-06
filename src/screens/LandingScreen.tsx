@@ -1,12 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { listSessions, createSession, loadSession, deleteSession } from '../storage/session-manager';
 import type { SessionMeta } from '../storage/session-manager';
 import type { Portfolio } from '../types/portfolio';
+import { Mayor } from '../components/Mayor';
+import { SpeechBubble } from '../components/SpeechBubble';
+import { mayorLines } from '../content/mayorDialogue';
+import { tokens } from '../styles/tokens';
 
 interface Props {
   initialPortfolio: Portfolio;
   onSessionStart: (slug: string, portfolio: Portfolio) => void;
 }
+
+type Mode = 'menu' | 'create' | 'resume';
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -19,14 +27,31 @@ function timeAgo(iso: string): string {
   return `il y a ${days}j`;
 }
 
+/** Stable colour per session, derived from the slug. */
+const SESSION_DOT_COLORS = [
+  tokens.color.citizen,
+  tokens.color.construct,
+  tokens.color.money,
+  tokens.color.debt,
+  tokens.color.brick,
+];
+function dotColor(slug: string): string {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
+  return SESSION_DOT_COLORS[h % SESSION_DOT_COLORS.length];
+}
+
+// ─── Component ─────────────────────────────────────────────────────────────
+
 export default function LandingScreen({ initialPortfolio, onSessionStart }: Props) {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
-  const [mode, setMode] = useState<'menu' | 'create' | 'resume'>('menu');
+  const [mode, setMode] = useState<Mode>('menu');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hoverKey, setHoverKey] = useState<string | null>(null);
 
   useEffect(() => {
     setSessions(listSessions());
@@ -34,7 +59,7 @@ export default function LandingScreen({ initialPortfolio, onSessionStart }: Prop
 
   const handleCreate = async () => {
     if (!name.trim() || !password.trim()) {
-      setError('Remplis tous les champs');
+      setError('Donne un nom et un mot de passe à ta ville.');
       return;
     }
     setLoading(true);
@@ -50,7 +75,7 @@ export default function LandingScreen({ initialPortfolio, onSessionStart }: Prop
 
   const handleResume = async () => {
     if (!selectedSlug || !password.trim()) {
-      setError('Sélectionne une partie et entre le mot de passe');
+      setError("Sélectionne une ville et entre son mot de passe.");
       return;
     }
     setLoading(true);
@@ -66,10 +91,12 @@ export default function LandingScreen({ initialPortfolio, onSessionStart }: Prop
 
   const handleDelete = (slug: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Supprimer cette partie ?')) {
+    if (confirm('Supprimer cette ville ? Cette action est définitive.')) {
       deleteSession(slug);
-      setSessions(listSessions());
-      if (selectedSlug === slug) setSelectedSlug(null);
+      const next = listSessions();
+      setSessions(next);
+      if (selectedSlug === slug) setSelectedSlug(next[0]?.slug ?? null);
+      if (next.length === 0) setMode('menu');
     }
   };
 
@@ -80,353 +107,652 @@ export default function LandingScreen({ initialPortfolio, onSessionStart }: Prop
     }
   };
 
+  const goMenu = () => {
+    setMode('menu');
+    setError(null);
+    setName('');
+    setPassword('');
+    setSelectedSlug(null);
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────────────
+
   return (
-    <div style={styles.backdrop}>
-      <div style={styles.container}>
-        {/* Logo / Title */}
-        <div style={styles.logo}>🏙️</div>
-        <h1 style={styles.title}>DEBT CITY</h1>
-        <p style={styles.subtitle}>City builder de portfolio de dette</p>
+    <div style={styles.root}>
+      {/* Background layers — subtle grid + corner glow */}
+      <div style={styles.bgGrid} aria-hidden />
+      <div style={styles.bgGlow} aria-hidden />
 
-        {mode === 'menu' && (
-          <div style={styles.menu}>
-            <button style={styles.menuBtn} onClick={() => setMode('create')}>
-              <span style={styles.menuIcon}>🏗️</span>
-              <div>
-                <div style={styles.menuLabel}>Nouvelle partie</div>
-                <div style={styles.menuHint}>Crée ta ville depuis zéro</div>
-              </div>
-            </button>
+      {/* ═══ LEFT — Maire + brand markers ═════════════════════════════════ */}
+      <section style={styles.left}>
+        {/* Top marker */}
+        <div style={styles.markerRow}>
+          <span style={styles.markerDot} />
+          <span style={styles.markerLabel}>DEBT CITY · KLS</span>
+        </div>
 
-            <button
-              style={{
-                ...styles.menuBtn,
-                ...(sessions.length === 0 ? styles.menuBtnDisabled : {}),
-              }}
-              onClick={() => {
-                if (sessions.length > 0) {
-                  setMode('resume');
-                  // Auto-select first (most recent) session
-                  setSelectedSlug(sessions[0].slug);
-                }
-              }}
-              disabled={sessions.length === 0}
-            >
-              <span style={styles.menuIcon}>🔑</span>
-              <div>
-                <div style={styles.menuLabel}>Reprendre une partie</div>
-                <div style={styles.menuHint}>
-                  {sessions.length === 0
-                    ? 'Aucune sauvegarde'
-                    : `${sessions.length} partie${sessions.length > 1 ? 's' : ''} sauvegardée${sessions.length > 1 ? 's' : ''}`}
-                </div>
-              </div>
-            </button>
+        {/* Mayor + speech bubble */}
+        <div style={styles.mayorWrap}>
+          <Mayor size={340} mood="welcome" />
+          <div style={styles.bubbleWrap}>
+            <SpeechBubble tail="left" name="LE MAIRE" width={320}>
+              {mayorLines.landing.text}
+            </SpeechBubble>
           </div>
-        )}
+        </div>
 
-        {mode === 'create' && (
-          <div style={styles.form} onKeyDown={handleKeyDown}>
-            <div style={styles.formTitle}>Nouvelle partie</div>
+        {/* Bottom marker */}
+        <div style={styles.markerFooter}>
+          <span>v0.4 · BUILD 2026.05</span>
+          <span style={styles.markerDivider} />
+          <span>
+            {sessions.length === 0
+              ? 'AUCUNE PARTIE SAUVEGARDÉE'
+              : `${sessions.length} PARTIE${sessions.length > 1 ? 'S' : ''} SAUVEGARDÉE${sessions.length > 1 ? 'S' : ''}`}
+          </span>
+        </div>
+      </section>
 
-            <label style={styles.label}>Nom de la partie</label>
-            <input
-              style={styles.input}
-              type="text"
-              placeholder="Ex: Demo Kls, Ma Ville..."
-              value={name}
-              onChange={e => { setName(e.target.value); setError(null); }}
-              autoFocus
-            />
+      {/* ═══ RIGHT — Form pane ════════════════════════════════════════════ */}
+      <section style={styles.right}>
+        <div style={styles.rightInner}>
+          {mode === 'menu' && (
+            <>
+              <div style={styles.eyebrow}>BIENVENUE</div>
+              <h1 style={styles.heroTitle}>
+                <span>Construis ta ville,</span>
+                <br />
+                <span style={styles.heroAccent}>gère ta dette.</span>
+              </h1>
+              <p style={styles.heroSub}>
+                Ton portefeuille est une ville. Chaque ligne de dette est un
+                immeuble, chaque classe d'actifs un quartier. Construis,
+                refinance, démolis — tout ce que tu fais ici reflète ton vrai
+                portfolio.
+              </p>
 
-            <label style={styles.label}>Mot de passe</label>
-            <input
-              style={styles.input}
-              type="password"
-              placeholder="Pour protéger ta sauvegarde"
-              value={password}
-              onChange={e => { setPassword(e.target.value); setError(null); }}
-            />
-
-            {error && <div style={styles.error}>{error}</div>}
-
-            <div style={styles.actions}>
-              <button style={styles.backBtn} onClick={() => { setMode('menu'); setError(null); setName(''); setPassword(''); }}>
-                ← Retour
-              </button>
-              <button style={styles.primaryBtn} onClick={handleCreate} disabled={loading}>
-                {loading ? '⏳' : '🏗️'} Créer
-              </button>
-            </div>
-          </div>
-        )}
-
-        {mode === 'resume' && (
-          <div style={styles.form} onKeyDown={handleKeyDown}>
-            <div style={styles.formTitle}>Reprendre une partie</div>
-
-            <label style={styles.label}>Sélectionne ta partie</label>
-            <div style={styles.sessionList}>
-              {sessions.map(s => (
-                <div
-                  key={s.slug}
+              <div style={styles.menuStack}>
+                <button
                   style={{
-                    ...styles.sessionItem,
-                    ...(selectedSlug === s.slug ? styles.sessionItemActive : {}),
+                    ...styles.menuBtn,
+                    ...styles.menuBtnPrimary,
+                    ...(hoverKey === 'create' ? styles.menuBtnHover : {}),
                   }}
-                  onClick={() => { setSelectedSlug(s.slug); setError(null); }}
+                  onClick={() => setMode('create')}
+                  onMouseEnter={() => setHoverKey('create')}
+                  onMouseLeave={() => setHoverKey(null)}
                 >
-                  <div style={styles.sessionName}>{s.name}</div>
-                  <div style={styles.sessionMeta}>
-                    {timeAgo(s.updatedAt)}
+                  <span style={styles.menuIcon}>🏗️</span>
+                  <div style={styles.menuTextBlock}>
+                    <div style={styles.menuLabel}>Nouvelle partie</div>
+                    <div style={styles.menuHint}>Crée ta ville depuis zéro</div>
                   </div>
-                  <button
-                    style={styles.deleteBtn}
-                    onClick={e => handleDelete(s.slug, e)}
-                    title="Supprimer"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
+                  <span style={styles.menuArrow}>→</span>
+                </button>
 
-            <label style={styles.label}>Mot de passe</label>
-            <input
-              style={styles.input}
-              type="password"
-              placeholder="Entre le mot de passe"
-              value={password}
-              onChange={e => { setPassword(e.target.value); setError(null); }}
-              autoFocus
-            />
+                <button
+                  style={{
+                    ...styles.menuBtn,
+                    ...(sessions.length === 0 ? styles.menuBtnDisabled : {}),
+                    ...(hoverKey === 'resume' && sessions.length > 0
+                      ? styles.menuBtnHover
+                      : {}),
+                  }}
+                  onClick={() => {
+                    if (sessions.length === 0) return;
+                    setMode('resume');
+                    setSelectedSlug(sessions[0].slug);
+                  }}
+                  onMouseEnter={() => setHoverKey('resume')}
+                  onMouseLeave={() => setHoverKey(null)}
+                  disabled={sessions.length === 0}
+                >
+                  <span style={styles.menuIcon}>🔑</span>
+                  <div style={styles.menuTextBlock}>
+                    <div style={styles.menuLabel}>Reprendre une partie</div>
+                    <div style={styles.menuHint}>
+                      {sessions.length === 0
+                        ? 'Aucune sauvegarde'
+                        : `${sessions.length} ville${sessions.length > 1 ? 's' : ''} sauvegardée${sessions.length > 1 ? 's' : ''}`}
+                    </div>
+                  </div>
+                  <span style={styles.menuArrow}>→</span>
+                </button>
+              </div>
 
-            {error && <div style={styles.error}>{error}</div>}
+              <div style={styles.metaFooter}>
+                SAUVEGARDE LOCALE
+                <span style={styles.metaDivider} />
+                CHIFFRÉ
+                <span style={styles.metaDivider} />
+                FRANÇAIS
+              </div>
+            </>
+          )}
 
-            <div style={styles.actions}>
-              <button style={styles.backBtn} onClick={() => { setMode('menu'); setError(null); setPassword(''); setSelectedSlug(null); }}>
-                ← Retour
+          {mode === 'create' && (
+            <div onKeyDown={handleKeyDown}>
+              <div style={styles.eyebrow}>NOUVELLE PARTIE</div>
+              <h1 style={styles.formTitle}>On lui donne quel nom&nbsp;?</h1>
+              <p style={styles.formSub}>
+                Le nom de ta ville. C'est aussi le slug de ta sauvegarde locale
+                — choisis quelque chose que tu reconnaîtras facilement.
+              </p>
+
+              <label style={styles.label}>NOM DE LA VILLE</label>
+              <input
+                style={styles.input}
+                type="text"
+                placeholder="Ex&nbsp;: Démo Kls, Ma Ville..."
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError(null);
+                }}
+                autoFocus
+              />
+
+              <label style={{ ...styles.label, marginTop: 18 }}>
+                MOT DE PASSE
+              </label>
+              <input
+                style={styles.input}
+                type="password"
+                placeholder="Pour protéger ta sauvegarde"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError(null);
+                }}
+              />
+
+              {error && <div style={styles.error}>{error}</div>}
+
+              <button
+                style={{
+                  ...styles.primaryAction,
+                  ...(loading ? styles.primaryActionDisabled : {}),
+                }}
+                onClick={handleCreate}
+                disabled={loading}
+              >
+                {loading ? '⏳ En cours...' : '🏗️  Construire la ville'}
               </button>
-              <button style={styles.primaryBtn} onClick={handleResume} disabled={loading || !selectedSlug}>
-                {loading ? '⏳' : '🔑'} Rejoindre
+
+              <button style={styles.linkBack} onClick={goMenu}>
+                ← Retour au menu
               </button>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {mode === 'resume' && (
+            <div onKeyDown={handleKeyDown}>
+              <div style={styles.eyebrow}>REPRENDRE</div>
+              <h1 style={styles.formTitle}>Quelle ville on continue&nbsp;?</h1>
+              <p style={styles.formSub}>
+                Choisis ta ville et entre son mot de passe. Tu retrouveras
+                exactement où tu t'étais arrêté.
+              </p>
+
+              <div style={styles.sessionList}>
+                {sessions.map((s) => {
+                  const active = selectedSlug === s.slug;
+                  return (
+                    <div
+                      key={s.slug}
+                      style={{
+                        ...styles.sessionItem,
+                        ...(active ? styles.sessionItemActive : {}),
+                      }}
+                      onClick={() => {
+                        setSelectedSlug(s.slug);
+                        setError(null);
+                      }}
+                    >
+                      <span
+                        style={{
+                          ...styles.sessionDot,
+                          background: dotColor(s.slug),
+                        }}
+                      />
+                      <div style={styles.sessionTextBlock}>
+                        <div style={styles.sessionName}>{s.name}</div>
+                        <div style={styles.sessionMeta}>
+                          {timeAgo(s.updatedAt).toUpperCase()}
+                        </div>
+                      </div>
+                      <button
+                        style={styles.deleteBtn}
+                        onClick={(e) => handleDelete(s.slug, e)}
+                        title="Supprimer cette ville"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <label style={{ ...styles.label, marginTop: 18 }}>
+                MOT DE PASSE
+              </label>
+              <input
+                style={styles.input}
+                type="password"
+                placeholder="Mot de passe de la ville"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError(null);
+                }}
+                autoFocus
+              />
+
+              {error && <div style={styles.error}>{error}</div>}
+
+              <button
+                style={{
+                  ...styles.primaryAction,
+                  ...(loading || !selectedSlug ? styles.primaryActionDisabled : {}),
+                }}
+                onClick={handleResume}
+                disabled={loading || !selectedSlug}
+              >
+                {loading ? '⏳ En cours...' : '🔑  Rejoindre la ville'}
+              </button>
+
+              <button style={styles.linkBack} onClick={goMenu}>
+                ← Retour au menu
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
 
-// ─── Styles ───
+// ─── Styles ────────────────────────────────────────────────────────────────
 
-const styles: Record<string, React.CSSProperties> = {
-  backdrop: {
+const styles: Record<string, CSSProperties> = {
+  // ── Root layout ─────────────────────────────────────────────────────────
+  root: {
     position: 'fixed',
     inset: 0,
-    background: 'linear-gradient(135deg, #1A1612 0%, #221A12 50%, #1A1612 100%)',
+    display: 'grid',
+    gridTemplateColumns: '1.05fr 1fr',
+    minHeight: '100vh',
+    background:
+      'linear-gradient(135deg, #0E0B1A 0%, #14112A 50%, #1A1530 100%)',
+    fontFamily: tokens.font.ui,
+    color: tokens.color.text,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  bgGrid: {
+    position: 'absolute',
+    inset: 0,
+    backgroundImage: `
+      linear-gradient(rgba(200, 210, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200, 210, 255, 0.04) 1px, transparent 1px)
+    `,
+    backgroundSize: '64px 64px',
+    maskImage:
+      'radial-gradient(ellipse at center, black 30%, transparent 85%)',
+    WebkitMaskImage:
+      'radial-gradient(ellipse at center, black 30%, transparent 85%)',
+    pointerEvents: 'none',
+  },
+  bgGlow: {
+    position: 'absolute',
+    top: -200,
+    left: -200,
+    width: 600,
+    height: 600,
+    background:
+      'radial-gradient(circle, rgba(255, 192, 58, 0.12) 0%, transparent 70%)',
+    pointerEvents: 'none',
+  },
+
+  // ── Left pane ───────────────────────────────────────────────────────────
+  left: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    padding: '40px 56px',
+    zIndex: 1,
+  },
+  markerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  markerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: tokens.color.citizen,
+    boxShadow: '0 0 12px rgba(255, 192, 58, 0.7)',
+  },
+  markerLabel: {
+    fontFamily: tokens.font.mono,
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: '0.18em',
+    color: tokens.color.textMid,
+  },
+
+  mayorWrap: {
+    position: 'relative',
+    flex: 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontFamily: 'Quicksand, system-ui, sans-serif',
-    zIndex: 1000,
+    minHeight: 0,
   },
-  container: {
-    width: 400,
-    maxWidth: '90vw',
-    background: 'rgba(28, 22, 18, 0.92)',
-    backdropFilter: 'blur(20px)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 20,
-    padding: '40px 32px',
+  bubbleWrap: {
+    position: 'absolute',
+    left: 'calc(50% + 130px)',
+    top: '32%',
+  },
+
+  markerFooter: {
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
+    gap: 12,
+    fontFamily: tokens.font.mono,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.18em',
+    color: tokens.color.textDim,
   },
-  logo: {
-    fontSize: 48,
-    marginBottom: 8,
+  markerDivider: {
+    width: 4,
+    height: 4,
+    borderRadius: '50%',
+    background: tokens.color.textDim,
+    opacity: 0.6,
   },
-  title: {
-    color: '#6AB0F0',
-    fontSize: 28,
-    fontWeight: 900,
-    letterSpacing: 4,
+
+  // ── Right pane ──────────────────────────────────────────────────────────
+  right: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    padding: '40px 80px 40px 56px',
+    zIndex: 1,
+  },
+  rightInner: {
+    width: '100%',
+    maxWidth: 480,
+  },
+
+  eyebrow: {
+    fontFamily: tokens.font.mono,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.18em',
+    color: tokens.color.citizen,
+    marginBottom: 16,
+  },
+
+  // Hero
+  heroTitle: {
+    fontFamily: tokens.font.display,
+    fontSize: 64,
+    fontWeight: 800,
+    letterSpacing: '-0.035em',
+    lineHeight: 1.02,
     margin: 0,
+    color: tokens.color.text,
   },
-  subtitle: {
-    color: '#556',
-    fontSize: 12,
-    marginTop: 4,
-    marginBottom: 32,
+  heroAccent: {
+    color: tokens.color.citizen,
+  },
+  heroSub: {
+    fontSize: 16,
+    lineHeight: 1.55,
+    color: tokens.color.textMid,
+    marginTop: 18,
+    marginBottom: 36,
+    maxWidth: 380,
   },
 
   // Menu
-  menu: {
-    width: '100%',
+  menuStack: {
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
+    marginBottom: 28,
   },
   menuBtn: {
     display: 'flex',
     alignItems: 'center',
-    gap: 14,
-    padding: '16px 18px',
-    background: 'rgba(255,255,255,0.04)',
+    gap: 16,
+    padding: '20px 22px',
+    background: tokens.color.surface,
     borderWidth: 1,
     borderStyle: 'solid',
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 14,
+    borderColor: tokens.color.hairline,
+    borderRadius: tokens.radius.lg,
     cursor: 'pointer',
-    color: '#CCC',
-    fontFamily: 'Quicksand, system-ui, sans-serif',
-    textAlign: 'left' as const,
-    transition: 'all 0.15s',
+    color: tokens.color.text,
+    fontFamily: tokens.font.ui,
+    textAlign: 'left',
+    transition: 'all 0.18s cubic-bezier(0.5, 0, 0.2, 1)',
+    width: '100%',
+  },
+  menuBtnPrimary: {
+    background:
+      'linear-gradient(135deg, rgba(255,192,58,0.10) 0%, rgba(255,77,141,0.06) 100%)',
+    borderColor: tokens.color.citizenBd,
+  },
+  menuBtnHover: {
+    transform: 'translateX(4px)',
+    background: tokens.color.surfaceHi,
+    borderColor: tokens.color.hairline2,
   },
   menuBtnDisabled: {
     opacity: 0.4,
     cursor: 'not-allowed',
   },
   menuIcon: {
-    fontSize: 28,
+    fontSize: 24,
     flexShrink: 0,
   },
+  menuTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
   menuLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 700,
-    color: '#DDD',
+    color: tokens.color.text,
+    fontFamily: tokens.font.ui,
   },
   menuHint: {
-    fontSize: 11,
-    color: '#667',
-    marginTop: 2,
+    fontSize: 12,
+    color: tokens.color.textMid,
+    marginTop: 3,
+  },
+  menuArrow: {
+    fontSize: 18,
+    color: tokens.color.textDim,
+    flexShrink: 0,
   },
 
-  // Form
-  form: {
-    width: '100%',
+  metaFooter: {
     display: 'flex',
-    flexDirection: 'column',
+    alignItems: 'center',
     gap: 10,
-  },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: '#6AB0F0',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  label: {
+    fontFamily: tokens.font.mono,
     fontSize: 10,
     fontWeight: 700,
-    color: '#778',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: 4,
+    letterSpacing: '0.18em',
+    color: tokens.color.textDim,
+  },
+  metaDivider: {
+    width: 3,
+    height: 3,
+    borderRadius: '50%',
+    background: tokens.color.textDim,
+    opacity: 0.5,
+  },
+
+  // Forms (create / resume)
+  formTitle: {
+    fontFamily: tokens.font.display,
+    fontSize: 44,
+    fontWeight: 800,
+    letterSpacing: '-0.03em',
+    lineHeight: 1.05,
+    margin: 0,
+    color: tokens.color.text,
+  },
+  formSub: {
+    fontSize: 14,
+    lineHeight: 1.55,
+    color: tokens.color.textMid,
+    marginTop: 14,
+    marginBottom: 28,
+    maxWidth: 400,
+  },
+  label: {
+    display: 'block',
+    fontFamily: tokens.font.mono,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.18em',
+    color: tokens.color.textDim,
+    marginBottom: 8,
   },
   input: {
-    padding: '10px 14px',
-    background: 'rgba(255,255,255,0.06)',
+    width: '100%',
+    padding: '14px 16px',
+    background: tokens.color.surface,
     borderWidth: 1,
     borderStyle: 'solid',
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 10,
-    color: '#DDD',
-    fontFamily: 'Quicksand, system-ui, sans-serif',
-    fontSize: 13,
+    borderColor: tokens.color.hairline2,
+    borderRadius: tokens.radius.md,
+    color: tokens.color.text,
+    fontFamily: tokens.font.ui,
+    fontSize: 15,
     outline: 'none',
+    boxSizing: 'border-box',
+    transition: 'border-color 0.15s, background 0.15s',
   },
   error: {
-    color: '#FF4136',
-    fontSize: 11,
-    textAlign: 'center',
-    padding: '6px 0',
-  },
-  actions: {
-    display: 'flex',
-    gap: 10,
-    marginTop: 12,
-  },
-  backBtn: {
-    flex: 1,
-    padding: '10px 0',
-    background: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 10,
-    color: '#888',
-    fontFamily: 'Quicksand, system-ui, sans-serif',
+    color: tokens.color.debt,
     fontSize: 12,
+    fontFamily: tokens.font.mono,
     fontWeight: 700,
-    cursor: 'pointer',
+    letterSpacing: '0.05em',
+    padding: '14px 0 4px',
   },
-  primaryBtn: {
-    flex: 2,
-    padding: '10px 0',
-    background: 'rgba(74,144,217,0.25)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'rgba(74,144,217,0.4)',
-    borderRadius: 10,
-    color: '#6AB0F0',
-    fontFamily: 'Quicksand, system-ui, sans-serif',
-    fontSize: 13,
+
+  primaryAction: {
+    display: 'block',
+    width: '100%',
+    marginTop: 24,
+    padding: '16px 20px',
+    background: tokens.color.citizen,
+    border: 'none',
+    borderRadius: tokens.radius.pill,
+    color: tokens.color.bg,
+    fontFamily: tokens.font.ui,
+    fontSize: 15,
     fontWeight: 700,
+    letterSpacing: '0.01em',
     cursor: 'pointer',
+    transition: 'transform 0.12s, box-shadow 0.12s',
+    boxShadow: '0 8px 24px rgba(255, 192, 58, 0.25)',
+  },
+  primaryActionDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+    boxShadow: 'none',
+  },
+  linkBack: {
+    display: 'block',
+    margin: '14px auto 0',
+    background: 'transparent',
+    border: 'none',
+    color: tokens.color.textMid,
+    fontFamily: tokens.font.ui,
+    fontSize: 13,
+    cursor: 'pointer',
+    padding: '6px 12px',
   },
 
   // Session list
   sessionList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
-    maxHeight: 200,
+    gap: 8,
+    maxHeight: 240,
     overflowY: 'auto',
+    paddingRight: 4,
   },
   sessionItem: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    padding: '10px 12px',
-    background: 'rgba(255,255,255,0.04)',
+    gap: 14,
+    padding: '14px 16px',
+    background: tokens.color.surface,
     borderWidth: 1,
     borderStyle: 'solid',
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 10,
+    borderColor: tokens.color.hairline,
+    borderRadius: tokens.radius.md,
     cursor: 'pointer',
     transition: 'all 0.15s',
   },
   sessionItemActive: {
-    background: 'rgba(74,144,217,0.2)',
-    borderColor: 'rgba(74,144,217,0.4)',
+    background: tokens.color.surfaceHi,
+    borderColor: tokens.color.citizenBd,
+  },
+  sessionDot: {
+    width: 12,
+    height: 12,
+    borderRadius: '50%',
+    flexShrink: 0,
+    boxShadow: '0 0 10px currentColor',
+  },
+  sessionTextBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   sessionName: {
-    flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
-    color: '#DDD',
+    color: tokens.color.text,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   sessionMeta: {
+    fontFamily: tokens.font.mono,
     fontSize: 10,
-    color: '#667',
+    fontWeight: 700,
+    letterSpacing: '0.12em',
+    color: tokens.color.textDim,
+    marginTop: 3,
   },
   deleteBtn: {
-    width: 24,
-    height: 24,
+    width: 28,
+    height: 28,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'rgba(255,65,54,0.1)',
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: 'rgba(255,65,54,0.2)',
-    borderRadius: 6,
-    color: '#FF4136',
-    fontSize: 10,
-    fontWeight: 'bold',
+    background: 'transparent',
+    border: `1px solid ${tokens.color.hairline}`,
+    borderRadius: tokens.radius.sm,
+    color: tokens.color.textDim,
+    fontSize: 11,
+    fontWeight: 700,
     cursor: 'pointer',
     flexShrink: 0,
+    transition: 'all 0.15s',
   },
 };
