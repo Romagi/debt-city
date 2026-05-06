@@ -4,7 +4,9 @@ import BuildingPanel from './panels/BuildingPanel';
 import TownhallPanel from './panels/TownhallPanel';
 import ShopPanel from './panels/ShopPanel';
 import LibraryPanel from './panels/LibraryPanel';
-import CityHeader from './panels/CityHeader';
+import Topbar from './panels/Topbar';
+import Sidebar from './panels/Sidebar';
+import Zoombar from './panels/Zoombar';
 import BorrowerModal from './modals/BorrowerModal';
 import DealModal from './modals/DealModal';
 import TrancheModal from './modals/TrancheModal';
@@ -15,6 +17,9 @@ import AllocationModal from './modals/AllocationModal';
 import DocumentModal from './modals/DocumentModal';
 import Toolbar from './panels/Toolbar';
 import LandingScreen from './screens/LandingScreen';
+import SwitchCityModal from './screens/SwitchCityModal';
+import OnboardingCoach, { buildDefaultSteps } from './onboarding/OnboardingCoach';
+import { isOnboardingDone, resetOnboarding } from './storage/onboardingStorage';
 import { mockPortfolio } from './api/mock-data';
 import { portfolioReducer } from './state/portfolio-reducer';
 import { useUndoStack } from './state/undo-stack';
@@ -62,7 +67,7 @@ export default function App() {
   );
 }
 
-// ─── Game screen (split to allow useReducer with dynamic initial state) ───
+// ─── Game screen ──────────────────────────────────────────────────────────
 
 function GameScreen({
   slug,
@@ -82,27 +87,41 @@ function GameScreen({
   /** Bumping `ts` re-triggers the camera focus animation in CityCanvas, even on the same projectId. */
   const [focusRequest, setFocusRequest] = useState<{ projectId: string; ts: number } | null>(null);
 
-  // Stable handlers for <CityHeader/> — prevent React.memo wrapper from being bypassed.
-  // These are intentionally referentially stable (empty deps) so CityHeader can skip
-  // re-rendering when only `activeTarget`, `modal`, `placementMode` or `focusRequest` change.
+  // ─── HUD-level state ────────────────────────────────────────────────────
+  const [showSwitchModal, setShowSwitchModal] = useState(false);
+  // Onboarding fires automatically the very first time (no completion timestamp on disk).
+  const [showOnboarding, setShowOnboarding] = useState(() => !isOnboardingDone());
+
+  // Refs for the OnboardingCoach spotlight (canvas / sidebar / build-bar).
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const buildBarRef = useRef<HTMLDivElement>(null);
+
+  // Stable handlers for memoised children.
   const handleFocusDistrict = useCallback(
     (projectId: string) => setFocusRequest({ projectId, ts: Date.now() }),
     [],
   );
   const handleAddDeal     = useCallback(() => setModal({ type: 'deal' }),     []);
   const handleAddBorrower = useCallback(() => setModal({ type: 'borrower' }), []);
-  // Stable handler for contextual panels (memoised) — keeps the React.memo effective
   const handleClosePanel  = useCallback(() => setActiveTarget(null),          []);
 
+  const handleOpenSwitchCity     = useCallback(() => setShowSwitchModal(true),  []);
+  const handleCloseSwitchCity    = useCallback(() => setShowSwitchModal(false), []);
+  const handleSwitchCitySelected = useCallback((s: string, p: Portfolio) => {
+    setShowSwitchModal(false);
+    onSwitchCity(s, p);
+  }, [onSwitchCity]);
+
+  const handleReplayOnboarding = useCallback(() => {
+    resetOnboarding();
+    setShowOnboarding(true);
+  }, []);
+  const handleCloseOnboarding = useCallback(() => setShowOnboarding(false), []);
+
   // ─── Undo/Redo for construction actions ────────────────────────────────────
-  // We push a snapshot of the grid BEFORE each PLACE_DECORATION / REMOVE_DECORATION
-  // / MOVE_STRUCTURE action. Cmd+Z pops the stack and dispatches RESTORE_GRID.
-  // The hook is intentionally scoped to grid-only — modals (deal/borrower edits)
-  // are not part of the undo history per spec.
   const { pushSnapshot, undo, redo, canUndo, canRedo } = useUndoStack(portfolio.grid, dispatch);
 
-  // Construction action wrappers — push a "before" snapshot then dispatch.
-  // Identity changes when portfolio.grid does, but no consumer is memoised on them.
   const handleMoveStructure = useCallback(
     (entityId: string, structureType: string, toCol: number, toRow: number, width: number, height: number) => {
       pushSnapshot(portfolio.grid);
@@ -126,7 +145,7 @@ function GameScreen({
     [portfolio.grid, pushSnapshot],
   );
 
-  // ─── Toolbar handlers (stable across renders so the memoised Toolbar holds) ─
+  // ─── Toolbar handlers ──────────────────────────────────────────────────────
   const handleSelectItem = useCallback((deco: CellType) => {
     setPlacementMode({ deco, eraser: false, flip: false });
   }, []);
@@ -139,9 +158,6 @@ function GameScreen({
   }, []);
 
   // ─── Keyboard shortcuts ────────────────────────────────────────────────────
-  // F → flip · Esc → cancel placement
-  // Cmd+Z / Ctrl+Z → undo (only while in construction/destruction mode, per spec)
-  // Cmd+Shift+Z / Ctrl+Shift+Z → redo (same scope)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -155,7 +171,6 @@ function GameScreen({
         return;
       }
 
-      // Undo / Redo — only when actively building or destroying
       const cmdOrCtrl = e.metaKey || e.ctrlKey;
       if (cmdOrCtrl && (e.key === 'z' || e.key === 'Z') && placementMode) {
         e.preventDefault();
@@ -167,13 +182,11 @@ function GameScreen({
     return () => window.removeEventListener('keydown', onKey);
   }, [placementMode, undo, redo]);
 
-  // Auto-save to localStorage
   const { status: saveStatus } = useAutoSave(slug, portfolio);
 
   const cityState = useMemo(() => buildCityState(portfolio), [portfolio]);
 
-  // Sync grid when buildCityState produces new districts (initial render + new deals)
-  // hasSyncedRef ensures we fire at least once on mount so existing sessions get fences retroactively
+  // Sync grid when buildCityState produces new districts
   const hasSyncedRef = useRef(false);
   const cityDistrictCount = cityState.grid.districts.length;
   const portfolioDistrictCount = portfolio.grid.districts.length;
@@ -186,7 +199,6 @@ function GameScreen({
     }
   }, [cityDistrictCount, portfolioDistrictCount, cityState.grid]);
 
-  // Keep activeTarget in sync with portfolio changes (project data may have changed)
   const syncedTarget = useMemo(() => {
     if (!activeTarget) return null;
     const allBuildings = cityState.districts.flatMap(d => d.buildings);
@@ -195,83 +207,120 @@ function GameScreen({
     return { ...activeTarget, building: match } as ClickTarget;
   }, [activeTarget, cityState]);
 
+  // ─── Onboarding steps (built when refs are populated, recomputed on session change) ───
+  const onboardingSteps = useMemo(
+    () => buildDefaultSteps({
+      canvas:   canvasRef as React.RefObject<HTMLElement>,
+      sidebar:  sidebarRef as React.RefObject<HTMLElement>,
+      buildBar: buildBarRef as React.RefObject<HTMLElement>,
+    }),
+    [],
+  );
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
   return (
     <div style={styles.app}>
-      <CityCanvas
-        cityState={cityState}
-        focusRequest={focusRequest}
-        onTargetClick={setActiveTarget}
-        onMoveStructure={handleMoveStructure}
-        placementMode={placementMode}
-        onPlaceDecoration={handlePlaceDecoration}
-        onRemoveDecoration={handleRemoveDecoration}
-      />
+      <div style={styles.topbarSlot}>
+        <Topbar
+          slug={slug}
+          portfolio={portfolio}
+          weather={cityState.weather}
+          onSwitchCity={handleOpenSwitchCity}
+          onQuit={onQuit}
+          onReplayOnboarding={handleReplayOnboarding}
+          saveStatus={saveStatus}
+        />
+      </div>
 
-      {/* Top-center HUD bandeau: city card + weather + Argent/Météo/Annuaire drawers */}
-      <CityHeader
-        slug={slug}
+      <Sidebar
+        ref={sidebarRef}
         portfolio={portfolio}
-        weather={cityState.weather}
         onFocusDistrict={handleFocusDistrict}
         onAddDeal={handleAddDeal}
         onAddBorrower={handleAddBorrower}
-        onSwitchCity={onSwitchCity}
-        onQuit={onQuit}
       />
 
-      {/* Contextual panel based on what was clicked */}
-      {syncedTarget?.kind === 'building' && (
-        <BuildingPanel
-          building={syncedTarget.building}
-          dispatch={dispatch}
-          onClose={handleClosePanel}
-          onOpenModal={setModal}
+      <div ref={canvasRef} style={styles.canvasArea}>
+        <CityCanvas
+          cityState={cityState}
+          focusRequest={focusRequest}
+          onTargetClick={setActiveTarget}
+          onMoveStructure={handleMoveStructure}
+          placementMode={placementMode}
+          onPlaceDecoration={handlePlaceDecoration}
+          onRemoveDecoration={handleRemoveDecoration}
         />
-      )}
-      {syncedTarget?.kind === 'townhall' && (
-        <TownhallPanel
-          building={syncedTarget.building}
-          dispatch={dispatch}
-          onClose={handleClosePanel}
-          onOpenModal={setModal}
-        />
-      )}
-      {syncedTarget?.kind === 'shop' && (
-        <ShopPanel
-          building={syncedTarget.building}
-          dispatch={dispatch}
-          onClose={handleClosePanel}
-          onOpenModal={setModal}
-        />
-      )}
-      {syncedTarget?.kind === 'library' && (
-        <LibraryPanel
-          building={syncedTarget.building}
-          dispatch={dispatch}
-          onClose={handleClosePanel}
-          onOpenModal={setModal}
-        />
-      )}
 
-      <Toolbar
-        placementMode={placementMode}
-        onSelectItem={handleSelectItem}
-        onErase={handleErase}
-        onCancel={handleCancelPlacement}
-        onFlip={handleFlip}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onUndo={undo}
-        onRedo={redo}
-      />
+        {/* Build-bar (toolbar) — wrapped to capture a ref for the onboarding spotlight */}
+        <div ref={buildBarRef} style={styles.toolbarSlot}>
+          <Toolbar
+            placementMode={placementMode}
+            onSelectItem={handleSelectItem}
+            onErase={handleErase}
+            onCancel={handleCancelPlacement}
+            onFlip={handleFlip}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+          />
+        </div>
 
-      {/* Save indicator (kept top-right per Lot 1 spec) */}
-      <div style={styles.saveBar}>
-        <span style={styles.saveStatus}>
-          {saveStatus === 'saving' && '⏳ Sauvegarde...'}
-          {saveStatus === 'saved' && '💾 Sauvegardé'}
-        </span>
+        <Zoombar />
+
+        {/* Contextual panel — anchored inside canvasArea so it sits below
+            the topbar (top:0 of canvasArea = top:80 of viewport). */}
+        {syncedTarget?.kind === 'building' && (
+          <BuildingPanel
+            building={syncedTarget.building}
+            dispatch={dispatch}
+            onClose={handleClosePanel}
+            onOpenModal={setModal}
+          />
+        )}
+        {syncedTarget?.kind === 'townhall' && (
+          <TownhallPanel
+            building={syncedTarget.building}
+            dispatch={dispatch}
+            onClose={handleClosePanel}
+            onOpenModal={setModal}
+          />
+        )}
+        {syncedTarget?.kind === 'shop' && (
+          <ShopPanel
+            building={syncedTarget.building}
+            dispatch={dispatch}
+            onClose={handleClosePanel}
+            onOpenModal={setModal}
+          />
+        )}
+        {syncedTarget?.kind === 'library' && (
+          <LibraryPanel
+            building={syncedTarget.building}
+            dispatch={dispatch}
+            onClose={handleClosePanel}
+            onOpenModal={setModal}
+          />
+        )}
       </div>
+
+      {/* Switch city modal (triggered from Topbar ⚙ menu) */}
+      {showSwitchModal && (
+        <SwitchCityModal
+          currentSlug={slug}
+          onClose={handleCloseSwitchCity}
+          onSwitch={handleSwitchCitySelected}
+        />
+      )}
+
+      {/* Onboarding overlay */}
+      {showOnboarding && (
+        <OnboardingCoach
+          steps={onboardingSteps}
+          onClose={handleCloseOnboarding}
+        />
+      )}
 
       {/* Modals */}
       {modal?.type === 'borrower' && <BorrowerModal borrower={modal.borrower} onClose={() => setModal(null)} dispatch={dispatch} />}
@@ -286,33 +335,40 @@ function GameScreen({
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────
+
 const styles: Record<string, React.CSSProperties> = {
   app: {
-    position: 'relative',
     width: '100vw',
     height: '100vh',
-    overflow: 'hidden',
+    display: 'grid',
+    gridTemplateRows: '80px 1fr',
+    gridTemplateColumns: '320px 1fr',
+    gridTemplateAreas: `
+      "topbar topbar"
+      "sidebar canvas"
+    `,
     background: tokens.color.bg,
-    fontFamily: tokens.font.family,
+    fontFamily: tokens.font.ui,
+    color: tokens.color.text,
+    overflow: 'hidden',
   },
-  saveBar: {
+  topbarSlot: {
+    gridArea: 'topbar',
+    minWidth: 0,
+  },
+  canvasArea: {
+    gridArea: 'canvas',
+    position: 'relative',
+    overflow: 'hidden',
+    minWidth: 0,
+    minHeight: 0,
+  },
+  toolbarSlot: {
     position: 'absolute',
-    top: 28,
-    right: 20,
-    display: 'flex',
-    alignItems: 'center',
-    zIndex: 10,
-    pointerEvents: 'none',
-  },
-  saveStatus: {
-    color: tokens.color.textDim,
-    fontFamily: tokens.font.family,
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.semibold,
-    background: tokens.color.surface,
-    padding: '5px 12px',
-    borderRadius: tokens.radius.pill,
-    border: `1px solid ${tokens.color.border}`,
-    backdropFilter: tokens.blur.soft,
+    bottom: 24,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: tokens.z.hud,
   },
 };

@@ -334,15 +334,12 @@ export default memo(Toolbar);
 
 const styles: Record<string, React.CSSProperties> = {
   wrapper: {
-    position: 'fixed',
-    bottom: 24,
-    left: '50%',
-    transform: 'translateX(-50%)',
+    // Positioned by the parent (App → canvasArea → toolbarSlot) so the bar
+    // centres on the canvas zone, not the viewport.
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 10,
-    zIndex: tokens.z.hud,
     pointerEvents: 'none',
   },
   drawer: {
