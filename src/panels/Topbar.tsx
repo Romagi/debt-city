@@ -21,6 +21,10 @@ interface Props {
   onOpenMayorReport?: () => void;
   /** Optional: shown as a tiny pill on the right (autosave indicator). */
   saveStatus?: 'idle' | 'saving' | 'saved';
+  /** Whether the sidebar (city map) is currently open. */
+  sidebarOpen: boolean;
+  /** Toggle the sidebar visibility. */
+  onToggleSidebar: () => void;
 }
 
 const WEATHER_ICON: Record<WeatherState, string> = {
@@ -50,7 +54,7 @@ const WEATHER_LABEL: Record<WeatherState, string> = {
 function Topbar({
   slug, portfolio, weather,
   onSwitchCity, onQuit, onReplayOnboarding, onOpenMayorReport,
-  saveStatus,
+  saveStatus, sidebarOpen, onToggleSidebar,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [moneyOpen, setMoneyOpen] = useState(false);
@@ -138,6 +142,14 @@ function Topbar({
           <div style={styles.weatherBadge} title={WEATHER_LABEL[weather]}>
             <span style={{ fontSize: 20 }}>{WEATHER_ICON[weather]}</span>
           </div>
+
+          <IconBtn
+            label={sidebarOpen ? 'Fermer la carte' : 'Carte de la ville'}
+            onClick={onToggleSidebar}
+            active={sidebarOpen}
+          >
+            🗺
+          </IconBtn>
 
           <IconBtn
             ref={moneyBtnRef}

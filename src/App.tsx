@@ -89,8 +89,24 @@ function GameScreen({
 
   // ─── HUD-level state ────────────────────────────────────────────────────
   const [showSwitchModal, setShowSwitchModal] = useState(false);
+  /** The sidebar (city map) is hidden by default — opened from the 🗺 button. */
+  const [showSidebar, setShowSidebar] = useState(false);
   // Onboarding fires automatically the very first time (no completion timestamp on disk).
   const [showOnboarding, setShowOnboarding] = useState(() => !isOnboardingDone());
+
+  // While the onboarding overlay is showing, force the sidebar open so the
+  // step that spotlights it actually has something to highlight.
+  useEffect(() => {
+    if (showOnboarding) setShowSidebar(true);
+  }, [showOnboarding]);
+
+  // Close the sidebar on Escape.
+  useEffect(() => {
+    if (!showSidebar) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowSidebar(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showSidebar]);
 
   // Refs for the OnboardingCoach spotlight (canvas / sidebar / build-bar).
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -118,6 +134,8 @@ function GameScreen({
     setShowOnboarding(true);
   }, []);
   const handleCloseOnboarding = useCallback(() => setShowOnboarding(false), []);
+  const handleToggleSidebar = useCallback(() => setShowSidebar(o => !o), []);
+  const handleCloseSidebar  = useCallback(() => setShowSidebar(false), []);
 
   // ─── Undo/Redo for construction actions ────────────────────────────────────
   const { pushSnapshot, undo, redo, canUndo, canRedo } = useUndoStack(portfolio.grid, dispatch);
@@ -230,16 +248,10 @@ function GameScreen({
           onQuit={onQuit}
           onReplayOnboarding={handleReplayOnboarding}
           saveStatus={saveStatus}
+          sidebarOpen={showSidebar}
+          onToggleSidebar={handleToggleSidebar}
         />
       </div>
-
-      <Sidebar
-        ref={sidebarRef}
-        portfolio={portfolio}
-        onFocusDistrict={handleFocusDistrict}
-        onAddDeal={handleAddDeal}
-        onAddBorrower={handleAddBorrower}
-      />
 
       <div ref={canvasRef} style={styles.canvasArea}>
         <CityCanvas
@@ -268,6 +280,18 @@ function GameScreen({
         </div>
 
         <Zoombar />
+
+        {/* Sidebar (city map) — slides in from the left, stays mounted so the
+            onboarding refs remain valid even when closed. */}
+        <Sidebar
+          ref={sidebarRef}
+          portfolio={portfolio}
+          isOpen={showSidebar}
+          onClose={handleCloseSidebar}
+          onFocusDistrict={handleFocusDistrict}
+          onAddDeal={handleAddDeal}
+          onAddBorrower={handleAddBorrower}
+        />
 
         {/* Contextual panel — anchored inside canvasArea so it sits below
             the topbar (top:0 of canvasArea = top:80 of viewport). */}
@@ -343,10 +367,10 @@ const styles: Record<string, React.CSSProperties> = {
     height: '100vh',
     display: 'grid',
     gridTemplateRows: '80px 1fr',
-    gridTemplateColumns: '320px 1fr',
+    gridTemplateColumns: '1fr',
     gridTemplateAreas: `
-      "topbar topbar"
-      "sidebar canvas"
+      "topbar"
+      "canvas"
     `,
     background: tokens.color.bg,
     fontFamily: tokens.font.ui,

@@ -1,19 +1,27 @@
-import { memo } from 'react';
+import { memo, type CSSProperties } from 'react';
 import type { CityBuilding, Covenant, TermStatus } from '../types/portfolio';
 import { TERM_ACTIONS } from '../types/portfolio';
 import type { PortfolioAction } from '../state/portfolio-reducer';
+import { tokens } from '../styles/tokens';
+import { makePanelStyles } from './panelStyles';
 
 const TERM_STATUS_COLORS: Record<string, string> = {
-  validated: '#2ECC40', coming: '#87CEEB', pending: '#FFD700',
-  result_received: '#FF851B', result_ko: '#FF851B', non_compliant: '#FF851B',
-  breached: '#FF4136', created: '#AAA', deactivated: '#666',
+  validated:       tokens.color.money,
+  coming:          tokens.color.construct,
+  pending:         tokens.color.citizen,
+  result_received: tokens.color.brick,
+  result_ko:       tokens.color.brick,
+  non_compliant:   tokens.color.brick,
+  breached:        tokens.color.debt,
+  created:         tokens.color.textMid,
+  deactivated:     tokens.color.textDim,
 };
 
-const TRAFFIC_BADGES: Record<string, { bg: string; label: string }> = {
-  green: { bg: '#2ECC40', label: 'Compliant' },
-  orange: { bg: '#FF851B', label: 'At Risk' },
-  red: { bg: '#FF4136', label: 'Breached' },
-  grey: { bg: '#888', label: 'No Data' },
+const TRAFFIC_BADGES: Record<string, { bg: string; color: string; label: string }> = {
+  green: { bg: tokens.color.moneyBg,  color: tokens.color.money,  label: 'CONFORME' },
+  orange:{ bg: tokens.color.brickBg,  color: tokens.color.brick,  label: 'À RISQUE' },
+  red:   { bg: tokens.color.debtBg,   color: tokens.color.debt,   label: 'BREACH' },
+  grey:  { bg: tokens.color.surfaceLo,color: tokens.color.textDim,label: 'SANS DONNÉES' },
 };
 
 type ModalOpener = (m:
@@ -27,6 +35,8 @@ interface Props {
   onClose: () => void;
   onOpenModal: ModalOpener;
 }
+
+const S = makePanelStyles(tokens.color.citizen);
 
 function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project, trafficLight, alertLevel } = building;
@@ -42,13 +52,13 @@ function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   }
 
   function handleDeleteCovenant(covenantId: string, name: string) {
-    if (confirm(`Delete covenant "${name}" and all its terms?`)) {
+    if (confirm(`Supprimer le covenant "${name}" et tous ses terms ?`)) {
       dispatch({ type: 'DELETE_COVENANT', payload: { projectId: project.id, covenantId } });
     }
   }
 
   function handleDeleteTerm(covenantId: string, termId: string, name: string) {
-    if (confirm(`Delete term "${name}"?`)) {
+    if (confirm(`Supprimer le term "${name}" ?`)) {
       dispatch({ type: 'DELETE_TERM', payload: { projectId: project.id, covenantId, termId } });
     }
   }
@@ -56,106 +66,118 @@ function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   return (
     <div style={S.panel}>
       <div style={S.header}>
-        <div style={{ flex: 1 }}>
-          <div style={S.panelType}>Mairie — Covenants</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={S.panelType}>MAIRIE · COVENANTS</div>
           <h2 style={S.title}>{project.title}</h2>
-          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ ...S.badge, backgroundColor: tb.bg, color: '#FFF' }}>{tb.label}</span>
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ ...S.badge, background: tb.bg, color: tb.color }}>{tb.label}</span>
             {alertLevel !== 'none' && (
-              <span style={{ color: alertLevel === 'fire' ? '#FF4136' : '#AAA', fontSize: 11 }}>
-                {alertLevel === 'fire' ? 'Waiver refused' : 'Breach detected'}
+              <span style={{ ...S.nature, color: alertLevel === 'fire' ? tokens.color.debt : tokens.color.textMid }}>
+                {alertLevel === 'fire' ? 'WAIVER REFUSÉ' : 'BREACH DÉTECTÉ'}
               </span>
             )}
           </div>
         </div>
-        <button onClick={onClose} style={S.closeBtn}>&times;</button>
+        <button onClick={onClose} style={S.closeBtn} title="Fermer">&times;</button>
       </div>
 
-      {/* Summary */}
       <div style={S.stats}>
-        <div><div style={S.statLabel}>Covenants</div><div style={S.statValue}>{covenants.length}</div></div>
         <div>
-          <div style={S.statLabel}>Breached Terms</div>
-          <div style={{ ...S.statValue, color: '#FF4136' }}>
+          <div style={S.statLabel}>COVENANTS</div>
+          <div style={S.statValue}>{covenants.length}</div>
+        </div>
+        <div>
+          <div style={S.statLabel}>TERMS EN BREACH</div>
+          <div style={{ ...S.statValue, color: tokens.color.debt }}>
             {covenants.flatMap(c => c.terms).filter(t => t.currentStatus === 'breached').length}
           </div>
         </div>
       </div>
 
-      {/* Covenant list */}
       <div style={S.sectionHeader}>
-        <h3 style={S.sectionTitle}>Covenants ({covenants.length})</h3>
+        <h3 style={S.sectionTitle}>COVENANTS · {covenants.length}</h3>
         <button style={S.addBtn} onClick={() => onOpenModal({ type: 'covenant', projectId: project.id })}>
-          + Add Covenant
+          + Covenant
         </button>
       </div>
       <div style={S.list}>
-        {covenants.length === 0 && <div style={S.empty}>No covenants defined for this deal.</div>}
+        {covenants.length === 0 && <div style={S.empty}>Aucun covenant défini sur ce deal.</div>}
         {covenants.map(cov => (
           <div key={cov.id} style={S.listItem}>
-            <div style={S.listItemHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ ...S.listItemHeader, marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
                 <span style={S.listItemName}>{cov.name}</span>
-                <span style={{ ...S.versionBadge, ...(cov.status === 'published' ? S.versionPublished : S.versionDraft) }}>
-                  {cov.status === 'published' ? 'Published' : 'Draft'} v{cov.version}
+                <span style={{ ...localStyles.versionBadge, ...(cov.status === 'published' ? localStyles.versionPublished : localStyles.versionDraft) }}>
+                  {cov.status === 'published' ? 'PUBLIÉ' : 'DRAFT'} v{cov.version}
                 </span>
               </div>
-              <span style={S.listItemMeta}>{cov.nature.replace(/_/g, ' ')}</span>
+              <span style={S.listItemMeta}>{cov.nature.replace(/_/g, ' ').toUpperCase()}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
               {cov.status === 'draft' && (
                 <>
-                  <button style={{ ...S.actionBtn, borderColor: 'rgba(46,204,64,0.4)', color: '#2ECC40' }}
-                    onClick={() => dispatch({ type: 'PUBLISH_COVENANT', payload: { projectId: project.id, covenantId: cov.id } })}>
-                    Publish
+                  <button
+                    style={{ ...localStyles.actionBtn, borderColor: tokens.color.moneyBd, color: tokens.color.money }}
+                    onClick={() => dispatch({ type: 'PUBLISH_COVENANT', payload: { projectId: project.id, covenantId: cov.id } })}
+                  >
+                    Publier
                   </button>
-                  <button style={S.smallBtn} onClick={() => onOpenModal({ type: 'covenant', projectId: project.id, covenant: cov })}>Edit</button>
-                  <button style={{ ...S.smallBtn, color: '#FF4136' }} onClick={() => handleDeleteCovenant(cov.id, cov.name)}>Del</button>
+                  <button style={S.smallBtn} onClick={() => onOpenModal({ type: 'covenant', projectId: project.id, covenant: cov })}>
+                    Modifier
+                  </button>
+                  <button style={{ ...S.smallBtn, color: tokens.color.debt }} onClick={() => handleDeleteCovenant(cov.id, cov.name)}>
+                    Supprimer
+                  </button>
                 </>
               )}
               {cov.status === 'published' && (
-                <button style={{ ...S.actionBtn, borderColor: 'rgba(74,144,217,0.4)', color: '#6AB0F0' }}
-                  onClick={() => dispatch({ type: 'AMEND_COVENANT', payload: { projectId: project.id, covenantId: cov.id } })}>
-                  Create Amendment
+                <button
+                  style={{ ...localStyles.actionBtn, borderColor: tokens.color.constructBd, color: tokens.color.construct }}
+                  onClick={() => dispatch({ type: 'AMEND_COVENANT', payload: { projectId: project.id, covenantId: cov.id } })}
+                >
+                  Créer un avenant
                 </button>
               )}
               {cov.versions.length > 0 && (
-                <span style={{ color: '#666', fontSize: 9, marginLeft: 'auto' }}>{cov.versions.length} version{cov.versions.length > 1 ? 's' : ''}</span>
+                <span style={{ ...S.listItemMeta, marginLeft: 'auto', marginTop: 0 }}>
+                  {cov.versions.length} VERSION{cov.versions.length > 1 ? 'S' : ''}
+                </span>
               )}
             </div>
 
-            {/* Terms */}
-            <div style={S.termRow}>
+            <div style={localStyles.termRow}>
               {cov.terms.map(term => {
                 const actions = TERM_ACTIONS[term.currentStatus] ?? [];
                 const isBreached = term.currentStatus === 'breached';
                 const waiverPending = isBreached && term.waiver === null;
 
                 return (
-                  <div key={term.id} style={S.termItem}>
-                    {/* Status row */}
-                    <div style={S.termChip}>
-                      <span style={{ ...S.termDot, backgroundColor: TERM_STATUS_COLORS[term.currentStatus] ?? '#AAA' }} />
-                      <span style={S.termLabel}>{term.name}</span>
-                      <span style={S.termStatus}>{term.currentStatus.replace(/_/g, ' ')}</span>
-                      {term.waiver === false && <span style={S.waiverBadge}>waiver refused</span>}
-                      {term.waiver === true && <span style={{ ...S.waiverBadge, color: '#2ECC40' }}>waiver granted</span>}
+                  <div key={term.id} style={localStyles.termItem}>
+                    <div style={localStyles.termChip}>
+                      <span style={{ ...localStyles.termDot, backgroundColor: TERM_STATUS_COLORS[term.currentStatus] ?? tokens.color.textMid }} />
+                      <span style={localStyles.termLabel}>{term.name}</span>
+                      <span style={localStyles.termStatus}>{term.currentStatus.replace(/_/g, ' ').toUpperCase()}</span>
+                      {term.waiver === false && <span style={localStyles.waiverBadge}>WAIVER REFUSÉ</span>}
+                      {term.waiver === true && <span style={{ ...localStyles.waiverBadge, color: tokens.color.money }}>WAIVER OK</span>}
                       <button
-                        style={{ ...S.smallBtn, color: '#666', fontSize: 9, marginLeft: 'auto' }}
+                        style={{ ...S.smallBtn, fontSize: 10, marginLeft: 'auto' }}
                         onClick={() => handleDeleteTerm(cov.id, term.id, term.name)}
-                        title="Delete term"
+                        title="Supprimer ce term"
                       >
                         &times;
                       </button>
                     </div>
 
-                    {/* Action buttons */}
                     {(actions.length > 0 || waiverPending) && (
-                      <div style={S.actionRow}>
+                      <div style={localStyles.actionRow}>
                         {actions.map(a => (
                           <button
                             key={a.target}
-                            style={a.target === 'breached' || a.target === 'non_compliant' ? S.actionBtnDanger : S.actionBtn}
+                            style={
+                              a.target === 'breached' || a.target === 'non_compliant'
+                                ? localStyles.actionBtnDanger
+                                : localStyles.actionBtn
+                            }
                             onClick={() => handleTransition(cov.id, term.id, a.target)}
                           >
                             {a.label}
@@ -163,11 +185,11 @@ function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
                         ))}
                         {waiverPending && (
                           <>
-                            <button style={S.waiverGrantBtn} onClick={() => handleWaiver(cov.id, term.id, true)}>
-                              Grant Waiver
+                            <button style={localStyles.waiverGrantBtn} onClick={() => handleWaiver(cov.id, term.id, true)}>
+                              Accorder waiver
                             </button>
-                            <button style={S.waiverRefuseBtn} onClick={() => handleWaiver(cov.id, term.id, false)}>
-                              Refuse Waiver
+                            <button style={localStyles.waiverRefuseBtn} onClick={() => handleWaiver(cov.id, term.id, false)}>
+                              Refuser waiver
                             </button>
                           </>
                         )}
@@ -177,12 +199,11 @@ function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
                 );
               })}
 
-              {/* Add Term button */}
               <button
-                style={S.addTermBtn}
+                style={{ ...localStyles.actionBtn, marginTop: 4, alignSelf: 'flex-start', borderColor: tokens.color.citizenBd, color: tokens.color.citizen }}
                 onClick={() => onOpenModal({ type: 'term', projectId: project.id, covenantId: cov.id })}
               >
-                + Add Term
+                + Term
               </button>
             </div>
           </div>
@@ -192,56 +213,95 @@ function TownhallPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   );
 }
 
-const actionBtnBase: React.CSSProperties = {
-  padding: '2px 6px',
-  fontSize: 9,
-  fontFamily: 'Quicksand, system-ui, sans-serif',
-  border: '1px solid rgba(255,255,255,0.15)',
-  borderRadius: 3,
-  background: 'rgba(255,255,255,0.06)',
-  color: '#CCC',
-  cursor: 'pointer',
-  textTransform: 'uppercase',
-  fontWeight: 700,
-  letterSpacing: 0.3,
-};
-
 export default memo(TownhallPanel);
 
-const S: Record<string, React.CSSProperties> = {
-  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  panelType: { color: '#A88A74', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  title: { margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 },
-  badge: { display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: 'uppercase' },
-  closeBtn: { background: 'none', border: 'none', color: '#FFF', fontSize: 24, cursor: 'pointer', padding: '0 4px', lineHeight: 1 },
-  stats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 },
-  statLabel: { color: '#888', fontSize: 10, textTransform: 'uppercase', marginBottom: 2 },
-  statValue: { fontSize: 16, fontWeight: 700 },
-  sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, marginBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 },
-  sectionTitle: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: '#888', margin: 0 },
-  addBtn: { background: 'none', border: '1px solid rgba(168,138,116,0.4)', borderRadius: 4, color: '#A88A74', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'Quicksand, system-ui, sans-serif' },
-  list: { display: 'flex', flexDirection: 'column', gap: 8 },
-  listItem: { padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 },
-  listItemHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  listItemName: { fontWeight: 700, fontSize: 13 },
-  listItemMeta: { color: '#777', fontSize: 10, textTransform: 'capitalize' },
-  smallBtn: { background: 'none', border: 'none', color: '#888', fontSize: 10, cursor: 'pointer', padding: '2px 0', fontFamily: 'Quicksand, system-ui, sans-serif', textDecoration: 'underline' },
-  termRow: { display: 'flex', flexDirection: 'column', gap: 6 },
-  termItem: { display: 'flex', flexDirection: 'column', gap: 3 },
-  termChip: { display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' },
-  termDot: { display: 'inline-block', width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
-  termLabel: { fontSize: 11, color: '#CCC', minWidth: 50 },
-  termStatus: { fontSize: 10, color: '#888', textTransform: 'capitalize' },
-  waiverBadge: { fontSize: 9, color: '#FF4136', fontWeight: 700, textTransform: 'uppercase' },
-  empty: { color: '#555', fontSize: 11, fontStyle: 'italic', padding: '8px 0' },
-  actionRow: { display: 'flex', gap: 4, flexWrap: 'wrap', marginLeft: 14 },
+const actionBtnBase: CSSProperties = {
+  padding: '4px 10px',
+  fontFamily: tokens.font.mono,
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  border: `1px solid ${tokens.color.hairline2}`,
+  borderRadius: tokens.radius.pill,
+  background: tokens.color.surfaceLo,
+  color: tokens.color.textMid,
+  cursor: 'pointer',
+};
+
+const localStyles: Record<string, CSSProperties> = {
+  termRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  termItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  termChip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '4px 0',
+    flexWrap: 'wrap',
+  },
+  termDot: {
+    display: 'inline-block',
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    flexShrink: 0,
+    boxShadow: '0 0 6px currentColor',
+  },
+  termLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: tokens.color.text,
+    minWidth: 50,
+  },
+  termStatus: {
+    fontFamily: tokens.font.mono,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    color: tokens.color.textDim,
+  },
+  waiverBadge: {
+    fontFamily: tokens.font.mono,
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    color: tokens.color.debt,
+  },
+  actionRow: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginLeft: 16,
+  },
   actionBtn: { ...actionBtnBase },
-  actionBtnDanger: { ...actionBtnBase, borderColor: 'rgba(255,133,27,0.4)', color: '#FF851B' },
-  waiverGrantBtn: { ...actionBtnBase, borderColor: 'rgba(46,204,64,0.4)', color: '#2ECC40' },
-  waiverRefuseBtn: { ...actionBtnBase, borderColor: 'rgba(255,65,54,0.4)', color: '#FF4136' },
-  addTermBtn: { ...actionBtnBase, marginTop: 4, borderColor: 'rgba(168,138,116,0.3)', color: '#A88A74', alignSelf: 'flex-start' },
-  versionBadge: { padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 },
-  versionDraft: { background: 'rgba(255,215,0,0.15)', color: '#FFD700', border: '1px solid rgba(255,215,0,0.3)' },
-  versionPublished: { background: 'rgba(46,204,64,0.15)', color: '#2ECC40', border: '1px solid rgba(46,204,64,0.3)' },
+  actionBtnDanger: { ...actionBtnBase, borderColor: tokens.color.brickBd, color: tokens.color.brick },
+  waiverGrantBtn: { ...actionBtnBase, borderColor: tokens.color.moneyBd, color: tokens.color.money },
+  waiverRefuseBtn: { ...actionBtnBase, borderColor: tokens.color.debtBd, color: tokens.color.debt },
+  versionBadge: {
+    padding: '2px 8px',
+    borderRadius: tokens.radius.pill,
+    fontFamily: tokens.font.mono,
+    fontSize: 8,
+    fontWeight: 700,
+    letterSpacing: '0.10em',
+    textTransform: 'uppercase',
+  },
+  versionDraft: {
+    background: tokens.color.citizenBg,
+    color: tokens.color.citizen,
+    border: `1px solid ${tokens.color.citizenBd}`,
+  },
+  versionPublished: {
+    background: tokens.color.moneyBg,
+    color: tokens.color.money,
+    border: `1px solid ${tokens.color.moneyBd}`,
+  },
 };

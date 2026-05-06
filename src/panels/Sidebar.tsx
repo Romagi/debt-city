@@ -1,10 +1,14 @@
 import { memo, forwardRef, useMemo, type CSSProperties } from 'react';
-import type { Portfolio, Project, ProjectNature } from '../types/portfolio';
+import type { Portfolio, Project, ProjectNature, Borrower } from '../types/portfolio';
 import { tokens, tabularNums } from '../styles/tokens';
 import { formatMoney } from '../city/utils';
 
 interface Props {
   portfolio: Portfolio;
+  /** Whether the sidebar is currently visible (slides in from the left). */
+  isOpen: boolean;
+  /** Close the sidebar (✕ button or ESC). */
+  onClose: () => void;
   /** Click on a district / chantier → focus camera on its district. */
   onFocusDistrict: (projectId: string) => void;
   /** Open the +Deal modal. */
@@ -13,29 +17,12 @@ interface Props {
   onAddBorrower: () => void;
 }
 
-// ─── Nature → friendly label + colour mapping ────────────────────────────
+// ─── Nature → colour mapping ─────────────────────────────────────────────
 //
-// `ProjectNature` is the closest equivalent we have to the prompt's "asset
-// classes" (Senior Secured / High Yield / etc.). We map each known nature
-// to a brand colour role; unknown natures fall back to a stable hash.
-
-const NATURE_LABELS: Record<string, string> = {
-  acquisition_finance: 'Acquisition',
-  asset_finance:       'Asset Finance',
-  bridge_finance:      'Bridge',
-  corporate_finance:   'Corporate',
-  ecosystem_finance:   'Écosystème',
-  green_finance:       'Green',
-  infrastructure_finance: 'Infrastructure',
-  leveraged_finance:   'Leveraged',
-  mezzanine_finance:   'Mezzanine',
-  project_finance:     'Project',
-  real_estate_finance: 'Real Estate',
-  refinancing:         'Refi',
-  trade_finance:       'Trade',
-  working_capital:     'Working Capital',
-  other:               'Autre',
-};
+// In Debt City, ONE deal = ONE city district. So the sidebar lists every
+// deal individually (not grouped by nature). We still derive a stable
+// dot colour from `nature` so deals of the same nature share a visual
+// grouping cue.
 
 const NATURE_COLORS = [
   tokens.color.construct,
@@ -45,13 +32,6 @@ const NATURE_COLORS = [
   tokens.color.brick,
 ];
 
-function natureLabel(n: ProjectNature | string | undefined): string {
-  const key = (n ?? 'other') as string;
-  return NATURE_LABELS[key] ?? prettyKey(key);
-}
-function prettyKey(k: string): string {
-  return k.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
-}
 function natureColor(n: ProjectNature | string | undefined): string {
   const key = (n ?? 'other') as string;
   // Stable hash → palette colour, so the same nature always gets the same hue.
@@ -65,55 +45,89 @@ function natureColor(n: ProjectNature | string | undefined): string {
 /**
  * Sidebar — 320px, full-height column to the left of the canvas.
  *
+ * Each *deal* in Debt City corresponds to one visual district in the city
+ * grid, so the sidebar lists deals one-by-one (not grouped). The dot colour
+ * is derived from `nature` to give a visual grouping cue without hiding
+ * individual deals behind aggregates.
+ *
  * Sections:
- *   1. QUARTIERS — projects grouped by `nature`, with money totals.
- *   2. CHANTIERS — current draft deals (= "construction sites").
+ *   1. QUARTIERS — published + finished deals (built / delivered districts).
+ *   2. CHANTIERS — draft deals (= construction sites still being shaped).
  *   3. Footer    — quick actions (+Deal / +Borrower).
  *
- * Replaces the contents of the old DirectoryDrawer in a permanent rail.
+ * Archived deals are hidden (they no longer have a visual district).
  */
 const Sidebar = forwardRef<HTMLDivElement, Props>(
-  ({ portfolio, onFocusDistrict, onAddDeal, onAddBorrower }, ref) => {
-    // ─── Group by nature ─────────────────────────────────────────────────
-    const districts = useMemo(() => {
-      const groups: Record<string, { nature: string; projects: Project[]; total: number }> = {};
-      for (const p of portfolio.projects) {
-        if (p.currentStatus === 'archived') continue;
-        const k = (p.nature ?? 'other') as string;
-        if (!groups[k]) groups[k] = { nature: k, projects: [], total: 0 };
-        groups[k].projects.push(p);
-        groups[k].total += p.globalFundingAmount.amount;
-      }
-      return Object.values(groups).sort((a, b) => b.total - a.total);
-    }, [portfolio.projects]);
+  ({ portfolio, isOpen, onClose, onFocusDistrict, onAddDeal, onAddBorrower }, ref) => {
+    // Borrower lookup — used to surface the borrower name on each row
+    const borrowerById = useMemo(() => {
+      const m = new Map<string, Borrower>();
+      for (const b of portfolio.borrowers) m.set(b.id, b);
+      return m;
+    }, [portfolio.borrowers]);
 
-    // ─── Drafts (= chantiers) ────────────────────────────────────────────
+    // Quartiers = published + finished (every deal is its own district)
+    const districts = useMemo(
+      () => portfolio.projects
+        .filter(p => p.currentStatus === 'published' || p.currentStatus === 'finished')
+        .sort((a, b) => b.globalFundingAmount.amount - a.globalFundingAmount.amount),
+      [portfolio.projects],
+    );
+
+    // Chantiers = drafts
     const drafts = useMemo(
-      () => portfolio.projects.filter(p => p.currentStatus === 'draft'),
+      () => portfolio.projects
+        .filter(p => p.currentStatus === 'draft')
+        .sort((a, b) => b.globalFundingAmount.amount - a.globalFundingAmount.amount),
       [portfolio.projects],
     );
 
     return (
-      <aside ref={ref} style={styles.bar}>
+      <aside
+        ref={ref}
+        style={{
+          ...styles.bar,
+          transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
+          boxShadow: isOpen ? '0 0 40px rgba(0, 0, 0, 0.5)' : 'none',
+        }}
+        aria-hidden={!isOpen}
+      >
+        {/* ─── HEADER ─────────────────────────────────────────────────── */}
+        <header style={styles.header}>
+          <div style={styles.headerTitleBlock}>
+            <span style={styles.headerEyebrow}>CARTE DE LA VILLE</span>
+            <span style={styles.headerSub}>Tes quartiers et chantiers en cours</span>
+          </div>
+          <button
+            style={styles.closeBtn}
+            onClick={onClose}
+            title="Fermer la carte"
+            aria-label="Fermer la carte"
+          >
+            ✕
+          </button>
+        </header>
+
         {/* ─── QUARTIERS ─────────────────────────────────────────────── */}
         <div style={styles.section}>
-          <div style={styles.eyebrow}>QUARTIERS</div>
+          <div style={styles.eyebrowRow}>
+            <span style={styles.eyebrow}>QUARTIERS</span>
+            <span style={styles.eyebrowCount}>{districts.length}</span>
+          </div>
           {districts.length === 0 ? (
             <div style={styles.emptyHint}>
-              Aucun deal pour l'instant.<br />Crée ton premier deal pour bâtir un quartier.
+              Aucun quartier livré pour l'instant.<br />
+              Construis un deal pour bâtir ton premier quartier.
             </div>
           ) : (
             <div style={styles.list}>
-              {districts.map(d => (
+              {districts.map(p => (
                 <DistrictItem
-                  key={d.nature}
-                  nature={d.nature}
-                  count={d.projects.length}
-                  total={d.total}
-                  onClick={() => {
-                    const first = d.projects[0];
-                    if (first) onFocusDistrict(first.id);
-                  }}
+                  key={p.id}
+                  project={p}
+                  borrower={borrowerById.get(p.borrowerId)}
+                  finished={p.currentStatus === 'finished'}
+                  onClick={() => onFocusDistrict(p.id)}
                 />
               ))}
             </div>
@@ -122,27 +136,33 @@ const Sidebar = forwardRef<HTMLDivElement, Props>(
 
         {/* ─── CHANTIERS ─────────────────────────────────────────────── */}
         <div style={styles.section}>
-          <div style={styles.eyebrow}>CHANTIERS</div>
+          <div style={styles.eyebrowRow}>
+            <span style={styles.eyebrow}>CHANTIERS</span>
+            <span style={styles.eyebrowCount}>{drafts.length}</span>
+          </div>
           <div style={styles.draftCard}>
             {drafts.length === 0 ? (
               <div style={styles.draftEmpty}>Aucun chantier en cours.</div>
             ) : (
-              drafts.slice(0, 6).map(p => (
+              drafts.map(p => (
                 <button
                   key={p.id}
                   style={styles.draftRow}
                   onClick={() => onFocusDistrict(p.id)}
                 >
-                  <span style={styles.draftBadge}>•</span>
+                  <span
+                    style={{
+                      ...styles.draftDot,
+                      background: natureColor(p.nature),
+                      boxShadow: `0 0 6px ${natureColor(p.nature)}`,
+                    }}
+                  />
                   <span style={styles.draftName}>{p.title}</span>
                   <span style={styles.draftAmount}>
                     {formatMoney(p.globalFundingAmount.amount)}
                   </span>
                 </button>
               ))
-            )}
-            {drafts.length > 6 && (
-              <div style={styles.draftMore}>+ {drafts.length - 6} autres</div>
             )}
           </div>
         </div>
@@ -167,21 +187,25 @@ export default memo(Sidebar);
 // ─── DistrictItem ────────────────────────────────────────────────────────
 
 interface DistrictItemProps {
-  nature: string;
-  count: number;
-  total: number;
+  project: Project;
+  borrower: Borrower | undefined;
+  finished: boolean;
   onClick: () => void;
 }
 
-function DistrictItem({ nature, count, total, onClick }: DistrictItemProps) {
-  const color = natureColor(nature);
+function DistrictItem({ project, borrower, finished, onClick }: DistrictItemProps) {
+  const color = natureColor(project.nature);
   return (
     <button style={styles.districtItem} onClick={onClick}>
       <span style={{ ...styles.districtDot, background: color, boxShadow: `0 0 8px ${color}` }} />
       <div style={styles.districtTextBlock}>
-        <div style={styles.districtName}>{natureLabel(nature)}</div>
+        <div style={styles.districtName}>
+          {project.title}
+          {finished && <span style={styles.districtFinished}> · livré</span>}
+        </div>
         <div style={styles.districtSub}>
-          {formatMoney(total)} · {count} immeuble{count > 1 ? 's' : ''}
+          {formatMoney(project.globalFundingAmount.amount)}
+          {borrower && ` · ${borrower.corporateName}`}
         </div>
       </div>
     </button>
@@ -192,8 +216,11 @@ function DistrictItem({ nature, count, total, onClick }: DistrictItemProps) {
 
 const styles: Record<string, CSSProperties> = {
   bar: {
-    width: 320,
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: 340,
     background: tokens.color.surface,
     borderRight: `1px solid ${tokens.color.hairline}`,
     display: 'flex',
@@ -201,6 +228,54 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: tokens.font.ui,
     color: tokens.color.text,
     overflow: 'hidden',
+    zIndex: tokens.z.drawer,
+    transition: 'transform 0.32s cubic-bezier(0.5, 0, 0.2, 1), box-shadow 0.32s',
+  },
+
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '20px 18px 16px',
+    borderBottom: `1px solid ${tokens.color.hairline}`,
+    gap: 12,
+  },
+  headerTitleBlock: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+  },
+  headerEyebrow: {
+    fontFamily: tokens.font.display,
+    fontSize: 16,
+    fontWeight: 800,
+    letterSpacing: '-0.01em',
+    color: tokens.color.text,
+  },
+  headerSub: {
+    fontFamily: tokens.font.mono,
+    fontSize: 10,
+    fontWeight: 500,
+    letterSpacing: '0.08em',
+    color: tokens.color.textDim,
+    marginTop: 3,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: tokens.color.surfaceLo,
+    border: `1px solid ${tokens.color.hairline}`,
+    borderRadius: tokens.radius.md,
+    color: tokens.color.textMid,
+    fontFamily: tokens.font.ui,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    flexShrink: 0,
+    transition: 'all 0.15s',
   },
 
   section: {
@@ -211,12 +286,30 @@ const styles: Record<string, CSSProperties> = {
     minHeight: 0,
   },
 
+  eyebrowRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   eyebrow: {
     fontFamily: tokens.font.mono,
     fontSize: 10,
     fontWeight: 700,
     letterSpacing: '0.18em',
     color: tokens.color.textDim,
+  },
+  eyebrowCount: {
+    fontFamily: tokens.font.mono,
+    fontSize: 10,
+    fontWeight: 700,
+    color: tokens.color.textMid,
+    background: tokens.color.surfaceLo,
+    padding: '2px 8px',
+    borderRadius: tokens.radius.pill,
+    minWidth: 22,
+    textAlign: 'center',
+    ...tabularNums,
   },
 
   // Quartiers
@@ -225,7 +318,8 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: 'column',
     gap: 4,
     overflowY: 'auto',
-    maxHeight: '40vh',
+    maxHeight: '38vh',
+    paddingRight: 4,
   },
   districtItem: {
     display: 'flex',
@@ -266,7 +360,17 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 500,
     color: tokens.color.textDim,
     marginTop: 2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
     ...tabularNums,
+  },
+  districtFinished: {
+    color: tokens.color.money,
+    fontWeight: 700,
+    fontSize: 11,
+    fontFamily: tokens.font.mono,
+    letterSpacing: '0.05em',
   },
 
   emptyHint: {
@@ -286,6 +390,8 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
+    maxHeight: '24vh',
+    overflowY: 'auto',
   },
   draftRow: {
     display: 'flex',
@@ -302,9 +408,10 @@ const styles: Record<string, CSSProperties> = {
     textAlign: 'left',
     transition: 'background 0.12s',
   },
-  draftBadge: {
-    color: tokens.color.citizen,
-    fontSize: 14,
+  draftDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
     flexShrink: 0,
   },
   draftName: {
@@ -326,14 +433,6 @@ const styles: Record<string, CSSProperties> = {
     color: tokens.color.textDim,
     padding: '6px 4px',
     textAlign: 'center',
-  },
-  draftMore: {
-    fontFamily: tokens.font.mono,
-    fontSize: 10,
-    fontWeight: 500,
-    color: tokens.color.textDim,
-    padding: '4px 12px',
-    letterSpacing: '0.06em',
   },
 
   // Footer

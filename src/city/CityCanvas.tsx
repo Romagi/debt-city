@@ -1070,38 +1070,82 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     ctx.save();
     ctx.translate(x, y);
 
-    // Draw sprite
-    const spriteKey = getBuildingSpriteKey(bh);
-    if (!drawSpriteOnGrid(ctx, spriteKey)) {
-      const colors = BUILDING_COLORS[project.nature] ?? BUILDING_COLORS.real_estate;
-      drawIsoBox(ctx, bw, bh, colors.base, colors.side, colors.top);
-    }
+    // Empty construction lot: a draft deal with no tranches yet means there's
+    // no real building to render. Instead of drawing the building_xs sprite +
+    // a tiny crane (which read as "nothing"), show an explicit "chantier"
+    // placeholder — a dashed iso-diamond outline marking the lot, with the
+    // crane prominently centred on it. This matches the city-builder mental
+    // model: the lot exists, but construction hasn't started yet.
+    const isEmptyLot = state === 'construction' && project.tranches.length === 0;
 
-    // (Removed) — the previous STATE_OVERLAY polygon was sized for the old
-    // iso-box rendering (`bw=72`, `bh=funding-derived`) and no longer matched the
-    // sprite footprint, leaving a coloured "ghost footprint" on the ground next
-    // to draft / archived / finished buildings. It was broken AND it was the
-    // residue the user kept seeing. Dropped entirely; the crane below remains
-    // for draft state, and archived / finished buildings just keep their normal
-    // sprite (status is conveyed in the Annuaire and contextual panels).
+    if (isEmptyLot) {
+      drawEmptyConstructionLot(ctx, w);
+    } else {
+      // Normal building sprite
+      const spriteKey = getBuildingSpriteKey(bh);
+      if (!drawSpriteOnGrid(ctx, spriteKey)) {
+        const colors = BUILDING_COLORS[project.nature] ?? BUILDING_COLORS.real_estate;
+        drawIsoBox(ctx, bw, bh, colors.base, colors.side, colors.top);
+      }
 
-    // Crane for draft projects
-    if (state === 'construction') {
-      const craneSprite = getSprite('crane');
-      if (craneSprite) {
-        const craneH = bh * 0.6;
-        const craneW = craneH * (craneSprite.width / craneSprite.height);
-        ctx.drawImage(craneSprite, bw / 4 - craneW * 0.3, -bh - craneH * 0.7, craneW, craneH);
-      } else {
-        // Fallback canvas crane
-        ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(bw / 4, -bh); ctx.lineTo(bw / 4, -bh - 35); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(bw / 4 - 18, -bh - 35); ctx.lineTo(bw / 4 + 25, -bh - 35); ctx.stroke();
+      // Crane on top of the building for in-progress projects.
+      if (state === 'construction') {
+        const craneSprite = getSprite('crane');
+        if (craneSprite) {
+          const craneH = bh * 0.6;
+          const craneW = craneH * (craneSprite.width / craneSprite.height);
+          ctx.drawImage(craneSprite, bw / 4 - craneW * 0.3, -bh - craneH * 0.7, craneW, craneH);
+        } else {
+          // Fallback canvas crane
+          ctx.strokeStyle = '#FFC03A'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(bw / 4, -bh); ctx.lineTo(bw / 4, -bh - 35); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(bw / 4 - 18, -bh - 35); ctx.lineTo(bw / 4 + 25, -bh - 35); ctx.stroke();
+        }
       }
     }
 
-
     ctx.restore();
+  }
+
+  /**
+   * Empty construction lot — drawn at origin (already translated).
+   * Yellow dashed iso-diamond + crane sprite centred on the ground.
+   */
+  function drawEmptyConstructionLot(ctx: CanvasRenderingContext2D, w: number) {
+    const lotW = w * 0.85;
+    const lotH = lotW * 0.5; // iso 2:1 aspect
+
+    // Subtle yellow ground tint (chantier signage feel)
+    ctx.fillStyle = 'rgba(255, 192, 58, 0.06)';
+    ctx.beginPath();
+    ctx.moveTo(0, -lotH / 2);
+    ctx.lineTo(lotW / 2, 0);
+    ctx.lineTo(0, lotH / 2);
+    ctx.lineTo(-lotW / 2, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Dashed yellow outline
+    ctx.strokeStyle = 'rgba(255, 192, 58, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Crane standing on the lot
+    const craneSprite = getSprite('crane');
+    if (craneSprite) {
+      const craneH = 110;
+      const craneW = craneH * (craneSprite.width / craneSprite.height);
+      ctx.drawImage(craneSprite, -craneW / 2, -craneH + 6, craneW, craneH);
+    } else {
+      // Fallback canvas crane
+      ctx.strokeStyle = '#FFC03A';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -90); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-25, -90); ctx.lineTo(35, -90); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-15, -90); ctx.lineTo(0, -75); ctx.lineTo(15, -90); ctx.stroke();
+    }
   }
 
   // ─── Townhall (mairie) — sprite + covenant count badge ───

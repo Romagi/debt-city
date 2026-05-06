@@ -1,11 +1,13 @@
-import { memo } from 'react';
+import { memo, type CSSProperties } from 'react';
 import type { CityBuilding, DocumentDrive } from '../types/portfolio';
 import type { PortfolioAction } from '../state/portfolio-reducer';
+import { tokens } from '../styles/tokens';
+import { makePanelStyles } from './panelStyles';
 
 const DRIVE_LABELS: Record<DocumentDrive, string> = {
-  lender: 'Lender Drive',
-  borrower_shared: 'Borrower Shared Drive',
-  borrower_confidential: 'Borrower Confidential Drive',
+  lender: 'DRIVE LENDERS',
+  borrower_shared: 'DRIVE BORROWER · PARTAGÉ',
+  borrower_confidential: 'DRIVE BORROWER · CONFIDENTIEL',
 };
 
 const DRIVE_ORDER: DocumentDrive[] = ['lender', 'borrower_shared', 'borrower_confidential'];
@@ -19,6 +21,8 @@ interface Props {
   onOpenModal: ModalOpener;
 }
 
+const S = makePanelStyles(tokens.color.money);
+
 function LibraryPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   const { project } = building;
   const docs = project.documents;
@@ -30,7 +34,7 @@ function LibraryPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   }));
 
   function handleDelete(docId: string, name: string) {
-    if (confirm(`Delete "${name}"?`)) {
+    if (confirm(`Supprimer "${name}" ?`)) {
       dispatch({ type: 'DELETE_DOCUMENT', payload: { projectId: project.id, documentId: docId } });
     }
   }
@@ -38,40 +42,48 @@ function LibraryPanel({ building, dispatch, onClose, onOpenModal }: Props) {
   return (
     <div style={S.panel}>
       <div style={S.header}>
-        <div style={{ flex: 1 }}>
-          <div style={S.panelType}>Library — Dataroom</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={S.panelType}>BIBLIOTHÈQUE · DATAROOM</div>
           <h2 style={S.title}>{project.title}</h2>
         </div>
-        <button onClick={onClose} style={S.closeBtn}>&times;</button>
+        <button onClick={onClose} style={S.closeBtn} title="Fermer">&times;</button>
       </div>
 
       <div style={S.stats}>
-        <div><div style={S.statLabel}>Documents</div><div style={S.statValue}>{docs.length}</div></div>
-        <div><div style={S.statLabel}>Drives</div><div style={S.statValue}>{driveCount}</div></div>
+        <div>
+          <div style={S.statLabel}>DOCUMENTS</div>
+          <div style={S.statValue}>{docs.length}</div>
+        </div>
+        <div>
+          <div style={S.statLabel}>DRIVES</div>
+          <div style={S.statValue}>{driveCount}</div>
+        </div>
       </div>
 
       <div style={S.sectionHeader}>
         <span />
         <button style={S.addBtn} onClick={() => onOpenModal({ type: 'document', projectId: project.id })}>
-          + Add Document
+          + Document
         </button>
       </div>
 
       {byDrive.map(({ drive, label, docs: driveDocs }) => (
-        <div key={drive}>
-          <h3 style={S.sectionTitle}>{label} ({driveDocs.length})</h3>
+        <div key={drive} style={{ marginTop: 18 }}>
+          <h3 style={localStyles.driveTitle}>
+            {label} · <span style={localStyles.driveCount}>{driveDocs.length}</span>
+          </h3>
           <div style={S.list}>
-            {driveDocs.length === 0 && <div style={S.empty}>No documents in this drive.</div>}
+            {driveDocs.length === 0 && <div style={S.empty}>Aucun document dans ce drive.</div>}
             {driveDocs.map(doc => (
               <div key={doc.id} style={S.listItem}>
-                <div style={S.docRow}>
-                  <span style={S.docIcon}>&#128196;</span>
-                  <span style={S.docName}>{doc.name}</span>
-                  <span style={S.docDate}>{doc.uploadedAt}</span>
+                <div style={localStyles.docRow}>
+                  <span style={localStyles.docIcon}>&#128196;</span>
+                  <span style={localStyles.docName}>{doc.name}</span>
+                  <span style={localStyles.docDate}>{doc.uploadedAt}</span>
                   <button
-                    style={S.delBtn}
+                    style={localStyles.delBtn}
                     onClick={() => handleDelete(doc.id, doc.name)}
-                    title="Delete document"
+                    title="Supprimer ce document"
                   >
                     &times;
                   </button>
@@ -87,24 +99,53 @@ function LibraryPanel({ building, dispatch, onClose, onOpenModal }: Props) {
 
 export default memo(LibraryPanel);
 
-const S: Record<string, React.CSSProperties> = {
-  panel: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 400, background: 'rgba(28, 22, 18, 0.95)', backdropFilter: 'blur(10px)', color: '#FFF', padding: 24, overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.1)', fontFamily: 'Quicksand, system-ui, sans-serif', fontSize: 13, zIndex: 20 },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-  panelType: { color: '#72A6A6', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  title: { margin: 0, fontSize: 16, fontWeight: 700, lineHeight: 1.3 },
-  closeBtn: { background: 'none', border: 'none', color: '#FFF', fontSize: 24, cursor: 'pointer', padding: '0 4px', lineHeight: 1 },
-  stats: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 },
-  statLabel: { color: '#888', fontSize: 10, textTransform: 'uppercase', marginBottom: 2 },
-  statValue: { fontSize: 16, fontWeight: 700 },
-  sectionHeader: { display: 'flex', justifyContent: 'flex-end', marginBottom: 8 },
-  addBtn: { background: 'none', border: '1px solid rgba(114,166,166,0.4)', borderRadius: 4, color: '#72A6A6', fontSize: 10, fontWeight: 700, cursor: 'pointer', padding: '3px 10px', fontFamily: 'Quicksand, system-ui, sans-serif' },
-  sectionTitle: { fontSize: 12, fontWeight: 700, textTransform: 'uppercase', color: '#888', margin: '16px 0 8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 4 },
-  list: { display: 'flex', flexDirection: 'column', gap: 4 },
-  listItem: { padding: '6px 10px', background: 'rgba(255,255,255,0.04)', borderRadius: 6 },
-  docRow: { display: 'flex', alignItems: 'center', gap: 8 },
-  docIcon: { fontSize: 14, flexShrink: 0 },
-  docName: { fontWeight: 600, flex: 1 },
-  docDate: { color: '#666', fontSize: 10 },
-  delBtn: { background: 'none', border: 'none', color: '#666', fontSize: 14, cursor: 'pointer', padding: '0 2px', lineHeight: 1 },
-  empty: { color: '#555', fontSize: 11, fontStyle: 'italic', padding: '4px 0' },
+const localStyles: Record<string, CSSProperties> = {
+  driveTitle: {
+    fontFamily: tokens.font.mono,
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.18em',
+    color: tokens.color.textMid,
+    margin: '0 0 10px',
+    paddingBottom: 6,
+    borderBottom: `1px solid ${tokens.color.hairline}`,
+  },
+  driveCount: {
+    color: tokens.color.money,
+  },
+  docRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  docIcon: {
+    fontSize: 16,
+    flexShrink: 0,
+    opacity: 0.7,
+  },
+  docName: {
+    fontWeight: 600,
+    flex: 1,
+    color: tokens.color.text,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  docDate: {
+    fontFamily: tokens.font.mono,
+    color: tokens.color.textDim,
+    fontSize: 10,
+    flexShrink: 0,
+    letterSpacing: '0.05em',
+  },
+  delBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: tokens.color.textDim,
+    fontSize: 14,
+    cursor: 'pointer',
+    padding: '0 4px',
+    lineHeight: 1,
+    flexShrink: 0,
+  },
 };

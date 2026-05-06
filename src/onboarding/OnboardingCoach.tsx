@@ -87,14 +87,24 @@ export const OnboardingCoach: React.FC<OnboardingCoachProps> = ({ steps, onClose
 
   return (
     <div ref={overlayRef} style={{ position: 'fixed', inset: 0, zIndex: 1000, pointerEvents: 'none' }}>
-      {/* Dim overlay (sauf le trou) */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'rgba(14, 11, 26, 0.65)',
-        backdropFilter: 'blur(2px)',
-      }} />
+      {/*
+        Dim layer.
+        — When a spotlight is active, we let the spotlight's giant box-shadow
+          (`0 0 0 9999px rgba(...)`) act as the dim, so the cut-out zone is
+          fully sharp/clear. Adding another full-screen overlay underneath
+          (especially with backdrop-filter blur) would re-blur the spotlit
+          region too — that was the original bug.
+        — When no spotlight (centred steps without targetRef), we render a
+          plain dim overlay so the form/dialog is still highlighted.
+      */}
+      {!holeRect && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(14, 11, 26, 0.72)',
+        }} />
+      )}
 
-      {/* Spotlight */}
+      {/* Spotlight — also doubles as the dim layer (no blur, sharp cut-out) */}
       {holeRect && (
         <div style={{
           position: 'absolute',
