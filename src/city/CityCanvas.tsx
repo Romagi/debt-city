@@ -323,6 +323,14 @@ export interface PlacementMode {
   flip?: boolean;
 }
 
+/** Imperative API exposed by CityCanvas to control its camera from outside
+ *  (Zoombar buttons, keyboard shortcuts, etc.). */
+export interface CameraApi {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  center: () => void;
+}
+
 interface Props {
   cityState: CityState;
   onTargetClick?: (target: ClickTarget) => void;
@@ -333,6 +341,9 @@ interface Props {
   /** Request to animate the camera onto a specific district.
    *  Bumping `ts` re-triggers the animation even if `projectId` is the same. */
   focusRequest?: { projectId: string; ts: number } | null;
+  /** When provided, populated on mount with imperative camera controls
+   *  (zoomIn / zoomOut / center). The parent uses it to wire the Zoombar. */
+  cameraApiRef?: React.MutableRefObject<CameraApi | null>;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -428,7 +439,7 @@ interface RenderScene {
   objectCmds:   ObjectCmd[];
 }
 
-export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration, focusRequest }: Props) {
+export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, placementMode, onPlaceDecoration, onRemoveDecoration, focusRequest, cameraApiRef }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
   // PERF — `forceRender` is intentionally retained for the sprite-load callback
@@ -1641,6 +1652,33 @@ export default function CityCanvas({ cityState, onTargetClick, onMoveStructure, 
     cameraRef.current = { ...cameraRef.current, zoom: Math.max(0.3, Math.min(3, cameraRef.current.zoom - e.deltaY * 0.001)) };
     needsRedrawRef.current = true;
   }
+
+  // ─── Expose camera controls to the parent (Zoombar buttons) ─────────────
+  // Apply zoom relative to the canvas centre so the visual focal point stays
+  // stable when you click +/- (matches the wheel behaviour).
+  useEffect(() => {
+    if (!cameraApiRef) return;
+    const applyZoom = (factor: number) => {
+      const cam = cameraRef.current;
+      const newZoom = Math.max(0.3, Math.min(3, cam.zoom * factor));
+      const ratio = newZoom / cam.zoom;
+      cameraRef.current = {
+        x: cam.x * ratio,
+        y: cam.y * ratio,
+        zoom: newZoom,
+      };
+      needsRedrawRef.current = true;
+    };
+    cameraApiRef.current = {
+      zoomIn:  () => applyZoom(1.25),
+      zoomOut: () => applyZoom(1 / 1.25),
+      center:  () => {
+        cameraRef.current = { x: 0, y: 0, zoom: 1 };
+        needsRedrawRef.current = true;
+      },
+    };
+    return () => { if (cameraApiRef) cameraApiRef.current = null; };
+  }, [cameraApiRef]);
 
   // ─── Fix 1 — Canvas resize only on actual resize ───
 

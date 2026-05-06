@@ -26,7 +26,7 @@ import { useUndoStack } from './state/undo-stack';
 import { buildCityState } from './city/utils';
 import { useAutoSave } from './storage/useAutoSave';
 import type { Portfolio, ClickTarget, Borrower, Project, Tranche, Lender, Covenant, CellType } from './types/portfolio';
-import type { PlacementMode } from './city/CityCanvas';
+import type { PlacementMode, CameraApi } from './city/CityCanvas';
 import { tokens } from './styles/tokens';
 
 // ─── Modal state ───
@@ -112,6 +112,12 @@ function GameScreen({
   const canvasRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const buildBarRef = useRef<HTMLDivElement>(null);
+
+  // Imperative camera control for the Zoombar buttons.
+  const cameraApiRef = useRef<CameraApi | null>(null);
+  const handleZoomIn  = useCallback(() => cameraApiRef.current?.zoomIn(),  []);
+  const handleZoomOut = useCallback(() => cameraApiRef.current?.zoomOut(), []);
+  const handleCenter  = useCallback(() => cameraApiRef.current?.center(),  []);
 
   // Stable handlers for memoised children.
   const handleFocusDistrict = useCallback(
@@ -262,6 +268,7 @@ function GameScreen({
           placementMode={placementMode}
           onPlaceDecoration={handlePlaceDecoration}
           onRemoveDecoration={handleRemoveDecoration}
+          cameraApiRef={cameraApiRef}
         />
 
         {/* Build-bar (toolbar) — wrapped to capture a ref for the onboarding spotlight */}
@@ -279,7 +286,7 @@ function GameScreen({
           />
         </div>
 
-        <Zoombar />
+        <Zoombar onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} onCenter={handleCenter} />
 
         {/* Sidebar (city map) — slides in from the left, stays mounted so the
             onboarding refs remain valid even when closed. */}
